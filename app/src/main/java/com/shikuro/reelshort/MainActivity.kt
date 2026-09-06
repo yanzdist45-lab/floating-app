@@ -1,22 +1,18 @@
 package com.shikuro.reelshort
 
 import android.app.Activity
-import android.app.Dialog
-import android.app.PictureInPictureParams
-import android.content.res.Configuration
+import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
-import android.util.Rational
+import android.provider.Settings
 import android.view.Gravity
-import android.view.MotionEvent
-import android.view.View
 import android.view.ViewGroup
+import android.view.inputmethod.EditorInfo
 import android.widget.*
-import androidx.media3.common.MediaItem
-import androidx.media3.common.Player
-import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.ui.PlayerView
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
@@ -27,10 +23,11 @@ class MainActivity : Activity() {
     private val api =
         "https://reelshort.vercel.app"
 
+    private lateinit var root: LinearLayout
 
-    /*
-     * DATA
-     */
+    private var screenCreated =
+        false
+
 
     data class Book(
         val id: String,
@@ -40,306 +37,336 @@ class MainActivity : Activity() {
     )
 
 
-    data class Episode(
-        val index: Int,
-        val chapterId: String,
-        val url: String,
-        val duration: Int
-    )
-
-
-    private val episodes =
-        mutableListOf<Episode>()
-
-
-    private var currentEpisodePosition =
-        0
-
-
-    private var currentBookTitle =
-        ""
-
-
-    /*
-     * UI
-     */
-
-    private lateinit var root:
-            FrameLayout
-
-
-    private var player:
-            ExoPlayer? = null
-
-
-    private var playerView:
-            PlayerView? = null
-
-
-    private var episodeButton:
-            Button? = null
-
-
-    private var titleText:
-            TextView? = null
-
-
-    private var miniButton:
-            Button? = null
-
-
-    private var touchStartY =
-        0f
-
-
-    override fun onCreate(
-        savedInstanceState: Bundle?
-    ) {
+    override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-
-        root =
-            FrameLayout(this)
-
-
-        root.setBackgroundColor(
-            Color.BLACK
-        )
-
-
-        setContentView(root)
-
-
-        showSearchScreen()
+        if (!Settings.canDrawOverlays(this)) {
+            requestOverlayPermission()
+        } else {
+            showSearchScreen()
+        }
     }
 
 
-    /*
-     * =========================================================
-     * SEARCH
-     * =========================================================
-     */
+    override fun onResume() {
+        super.onResume()
+
+        if (
+            Settings.canDrawOverlays(this) &&
+            !screenCreated
+        ) {
+            showSearchScreen()
+        }
+    }
+
+
+    private fun requestOverlayPermission() {
+
+        val layout =
+            LinearLayout(this).apply {
+
+                orientation =
+                    LinearLayout.VERTICAL
+
+                gravity =
+                    Gravity.CENTER
+
+                setPadding(
+                    dp(25),
+                    dp(25),
+                    dp(25),
+                    dp(25)
+                )
+
+                setBackgroundColor(
+                    Color.rgb(
+                        10,
+                        10,
+                        10
+                    )
+                )
+            }
+
+
+        val title =
+            TextView(this).apply {
+
+                text =
+                    "Izin Floating Window"
+
+                textSize =
+                    24f
+
+                gravity =
+                    Gravity.CENTER
+
+                setTextColor(
+                    Color.WHITE
+                )
+
+                setTypeface(
+                    null,
+                    Typeface.BOLD
+                )
+            }
+
+
+        val description =
+            TextView(this).apply {
+
+                text =
+                    "ReelShort butuh izin tampil di atas aplikasi lain supaya player bisa nongol di atas game."
+
+                textSize =
+                    15f
+
+                gravity =
+                    Gravity.CENTER
+
+                setTextColor(
+                    Color.LTGRAY
+                )
+
+                setPadding(
+                    0,
+                    dp(15),
+                    0,
+                    dp(20)
+                )
+            }
+
+
+        val button =
+            Button(this).apply {
+
+                text =
+                    "IZINKAN FLOATING WINDOW"
+
+                setOnClickListener {
+
+                    val intent =
+                        Intent(
+                            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                            Uri.parse(
+                                "package:$packageName"
+                            )
+                        )
+
+                    startActivity(
+                        intent
+                    )
+                }
+            }
+
+
+        layout.addView(
+            title
+        )
+
+        layout.addView(
+            description
+        )
+
+        layout.addView(
+            button
+        )
+
+
+        setContentView(
+            layout
+        )
+    }
+
 
     private fun showSearchScreen() {
 
-        releasePlayer()
+        screenCreated =
+            true
 
 
-        root.removeAllViews()
+        root =
+            LinearLayout(this).apply {
+
+                orientation =
+                    LinearLayout.VERTICAL
+
+                setPadding(
+                    dp(14),
+                    dp(18),
+                    dp(14),
+                    dp(14)
+                )
+
+                setBackgroundColor(
+                    Color.rgb(
+                        10,
+                        10,
+                        10
+                    )
+                )
+            }
 
 
-        val main =
-            LinearLayout(this)
-
-
-        main.orientation =
-            LinearLayout.VERTICAL
-
-
-        main.setPadding(
-            dp(14),
-            dp(18),
-            dp(14),
-            dp(14)
+        setContentView(
+            root
         )
 
 
-        main.setBackgroundColor(
-            Color.rgb(
-                10,
-                10,
-                10
-            )
-        )
+        val logo =
+            TextView(this).apply {
+
+                text =
+                    "ReelShort Floating"
+
+                textSize =
+                    25f
+
+                setTextColor(
+                    Color.WHITE
+                )
+
+                setTypeface(
+                    null,
+                    Typeface.BOLD
+                )
+
+                setPadding(
+                    dp(4),
+                    dp(4),
+                    dp(4),
+                    dp(16)
+                )
+            }
 
 
         root.addView(
-            main,
-            FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
-        )
-
-
-        /*
-         * TITLE
-         */
-
-        val logo =
-            TextView(this)
-
-
-        logo.text =
-            "ReelShort"
-
-
-        logo.textSize =
-            24f
-
-
-        logo.setTextColor(
-            Color.WHITE
-        )
-
-
-        logo.setTypeface(
-            null,
-            Typeface.BOLD
-        )
-
-
-        logo.setPadding(
-            4,
-            6,
-            4,
-            dp(14)
-        )
-
-
-        main.addView(
             logo
         )
 
 
-        /*
-         * SEARCH BAR
-         */
+        val row =
+            LinearLayout(this).apply {
 
-        val searchRow =
-            LinearLayout(this)
-
-
-        searchRow.orientation =
-            LinearLayout.HORIZONTAL
+                orientation =
+                    LinearLayout.HORIZONTAL
+            }
 
 
         val input =
-            EditText(this)
+            EditText(this).apply {
+
+                hint =
+                    "Cari drama..."
+
+                setSingleLine()
+
+                imeOptions =
+                    EditorInfo.IME_ACTION_SEARCH
+
+                textSize =
+                    16f
+
+                setTextColor(
+                    Color.WHITE
+                )
+
+                setHintTextColor(
+                    Color.GRAY
+                )
+
+                setPadding(
+                    dp(14),
+                    0,
+                    dp(14),
+                    0
+                )
+
+                background =
+                    rounded(
+                        Color.rgb(
+                            27,
+                            27,
+                            27
+                        ),
+                        12f
+                    )
+            }
 
 
-        input.hint =
-            "Cari drama..."
-
-
-        input.setHintTextColor(
-            Color.GRAY
-        )
-
-
-        input.setTextColor(
-            Color.WHITE
-        )
-
-
-        input.setSingleLine()
-
-
-        input.textSize =
-            16f
-
-
-        input.setBackgroundColor(
-            Color.rgb(
-                30,
-                30,
-                30
-            )
-        )
-
-
-        input.setPadding(
-            dp(14),
-            0,
-            dp(14),
-            0
-        )
-
-
-        searchRow.addView(
+        row.addView(
             input,
             LinearLayout.LayoutParams(
                 0,
-                dp(50),
+                dp(52),
                 1f
             )
         )
 
 
-        val searchButton =
-            Button(this)
+        val search =
+            Button(this).apply {
+                text = "Cari"
+            }
 
 
-        searchButton.text =
-            "Cari"
-
-
-        val searchButtonParams =
+        val searchParams =
             LinearLayout.LayoutParams(
                 dp(85),
-                dp(50)
+                dp(52)
             )
 
 
-        searchButtonParams.marginStart =
+        searchParams.marginStart =
             dp(8)
 
 
-        searchRow.addView(
-            searchButton,
-            searchButtonParams
+        row.addView(
+            search,
+            searchParams
         )
 
 
-        main.addView(
-            searchRow
+        root.addView(
+            row
         )
 
-
-        /*
-         * STATUS
-         */
 
         val status =
-            TextView(this)
+            TextView(this).apply {
+
+                text =
+                    "Cari drama lalu tap hasilnya."
+
+                textSize =
+                    13f
+
+                setTextColor(
+                    Color.GRAY
+                )
+
+                setPadding(
+                    dp(3),
+                    dp(15),
+                    dp(3),
+                    dp(12)
+                )
+            }
 
 
-        status.text =
-            "Cari drama yang mau ditonton."
-
-
-        status.setTextColor(
-            Color.GRAY
-        )
-
-
-        status.setPadding(
-            4,
-            dp(14),
-            4,
-            dp(12)
-        )
-
-
-        main.addView(
+        root.addView(
             status
         )
 
-
-        /*
-         * RESULTS
-         */
 
         val scroll =
             ScrollView(this)
 
 
         val results =
-            LinearLayout(this)
-
-
-        results.orientation =
-            LinearLayout.VERTICAL
+            LinearLayout(this).apply {
+                orientation =
+                    LinearLayout.VERTICAL
+            }
 
 
         scroll.addView(
@@ -347,7 +374,7 @@ class MainActivity : Activity() {
         )
 
 
-        main.addView(
+        root.addView(
             scroll,
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -357,7 +384,7 @@ class MainActivity : Activity() {
         )
 
 
-        fun runSearch() {
+        fun performSearch() {
 
             val keyword =
                 input.text
@@ -379,7 +406,7 @@ class MainActivity : Activity() {
             results.removeAllViews()
 
 
-            searchDrama(
+            searchBooks(
                 keyword,
                 status,
                 results
@@ -387,30 +414,35 @@ class MainActivity : Activity() {
         }
 
 
-        searchButton.setOnClickListener {
-            runSearch()
+        search.setOnClickListener {
+            performSearch()
         }
 
 
         input.setOnEditorActionListener {
                 _,
-                _,
+                action,
                 _ ->
 
-            runSearch()
+            if (
+                action ==
+                EditorInfo.IME_ACTION_SEARCH
+            ) {
 
-            true
+                performSearch()
+
+                true
+
+            } else {
+
+                false
+
+            }
         }
     }
 
 
-    /*
-     * =========================================================
-     * SEARCH API
-     * =========================================================
-     */
-
-    private fun searchDrama(
+    private fun searchBooks(
         keyword: String,
         status: TextView,
         results: LinearLayout
@@ -444,6 +476,7 @@ class MainActivity : Activity() {
                         "ok"
                     )
                 ) {
+
                     throw Exception(
                         "API search gagal"
                     )
@@ -476,20 +509,19 @@ class MainActivity : Activity() {
                         )
 
 
-                    val themeText =
-                        if (
-                            themes != null &&
-                            themes.length() > 0
-                        ) {
+                    val theme =
+                        buildString {
 
-                            buildString {
+                            if (
+                                themes != null
+                            ) {
 
                                 for (
-                                    t in 0 until themes.length()
+                                    j in 0 until themes.length()
                                 ) {
 
                                     if (
-                                        t > 0
+                                        j > 0
                                     ) {
                                         append(
                                             ", "
@@ -499,16 +531,11 @@ class MainActivity : Activity() {
 
                                     append(
                                         themes.optString(
-                                            t
+                                            j
                                         )
                                     )
                                 }
                             }
-
-                        } else {
-
-                            ""
-
                         }
 
 
@@ -532,9 +559,8 @@ class MainActivity : Activity() {
                                 ),
 
                             theme =
-                                themeText
+                                theme
                         )
-
                     )
                 }
 
@@ -545,15 +571,13 @@ class MainActivity : Activity() {
                         "${books.size} hasil ditemukan"
 
 
-                    books.forEach {
+                    books.forEach { book ->
 
-                        addBookView(
-                            it,
+                        addBookCard(
+                            book,
                             results
                         )
-
                     }
-
                 }
 
             } catch (
@@ -567,72 +591,67 @@ class MainActivity : Activity() {
 
                     status.text =
                         "Gagal: ${e.message}"
-
                 }
-
             }
 
         }.start()
     }
 
 
-    /*
-     * =========================================================
-     * BOOK CARD
-     * =========================================================
-     */
-
-    private fun addBookView(
+    private fun addBookCard(
         book: Book,
         container: LinearLayout
     ) {
 
         val card =
-            LinearLayout(this)
+            LinearLayout(this).apply {
 
+                orientation =
+                    LinearLayout.VERTICAL
 
-        card.orientation =
-            LinearLayout.VERTICAL
+                setPadding(
+                    dp(16),
+                    dp(15),
+                    dp(16),
+                    dp(15)
+                )
 
+                background =
+                    rounded(
+                        Color.rgb(
+                            27,
+                            27,
+                            27
+                        ),
+                        14f
+                    )
 
-        card.setPadding(
-            dp(16),
-            dp(15),
-            dp(16),
-            dp(15)
-        )
+                isClickable =
+                    true
 
-
-        card.setBackgroundColor(
-            Color.rgb(
-                28,
-                28,
-                28
-            )
-        )
+                isFocusable =
+                    true
+            }
 
 
         val title =
-            TextView(this)
+            TextView(this).apply {
 
+                text =
+                    book.title
 
-        title.text =
-            book.title
+                textSize =
+                    16f
 
+                setTextColor(
+                    Color.WHITE
+                )
 
-        title.textSize =
-            16f
-
-
-        title.setTextColor(
-            Color.WHITE
-        )
-
-
-        title.setTypeface(
-            null,
-            Typeface.BOLD
-        )
+                setTypeface(
+                    null,
+                    Typeface.BOLD
+                )
+            }
 
 
         card.addView(
@@ -641,44 +660,40 @@ class MainActivity : Activity() {
 
 
         val meta =
-            TextView(this)
+            TextView(this).apply {
+
+                text =
+                    buildString {
+
+                        append(
+                            "${book.chapters} Episode"
+                        )
 
 
-        meta.text =
-            buildString {
+                        if (
+                            book.theme.isNotEmpty()
+                        ) {
 
-                append(
-                    "${book.chapters} Episode"
+                            append(
+                                "  •  ${book.theme}"
+                            )
+                        }
+                    }
+
+                textSize =
+                    13f
+
+                setTextColor(
+                    Color.GRAY
                 )
 
-
-                if (
-                    book.theme.isNotEmpty()
-                ) {
-
-                    append(
-                        "  •  ${book.theme}"
-                    )
-
-                }
+                setPadding(
+                    0,
+                    dp(7),
+                    0,
+                    0
+                )
             }
-
-
-        meta.textSize =
-            13f
-
-
-        meta.setTextColor(
-            Color.GRAY
-        )
-
-
-        meta.setPadding(
-            0,
-            dp(6),
-            0,
-            0
-        )
 
 
         card.addView(
@@ -705,1055 +720,72 @@ class MainActivity : Activity() {
 
         card.setOnClickListener {
 
-            loadEpisodes(
+            startFloatingPlayer(
                 book
             )
-
         }
     }
 
 
-    /*
-     * =========================================================
-     * LOAD ALL EPISODES
-     * =========================================================
-     */
-
-    private fun loadEpisodes(
+    private fun startFloatingPlayer(
         book: Book
     ) {
 
-        Toast.makeText(
-            this,
-            "Memuat episode...",
-            Toast.LENGTH_SHORT
-        ).show()
-
-
-        Thread {
-
-            try {
-
-                val response =
-                    httpGet(
-                        "$api/api/stream/all-episode?lang=in&bookId=${book.id}"
-                    )
-
-
-                val json =
-                    JSONObject(
-                        response
-                    )
-
-
-                if (
-                    !json.optBoolean(
-                        "ok"
-                    )
-                ) {
-
-                    throw Exception(
-                        "API episode gagal"
-                    )
-
-                }
-
-
-                val array =
-                    json.getJSONArray(
-                        "episodes"
-                    )
-
-
-                val loaded =
-                    mutableListOf<Episode>()
-
-
-                for (
-                    i in 0 until array.length()
-                ) {
-
-                    val item =
-                        array.getJSONObject(
-                            i
-                        )
-
-
-                    var videoUrl =
-                        item.optString(
-                            "sourceVideoUrl"
-                        )
-
-
-                    /*
-                     * fallback sourceUrl
-                     */
-
-                    if (
-                        videoUrl.isEmpty()
-                    ) {
-
-                        val streams =
-                            item.optJSONArray(
-                                "streams"
-                            )
-
-
-                        if (
-                            streams != null &&
-                            streams.length() > 0
-                        ) {
-
-                            videoUrl =
-                                streams
-                                    .getJSONObject(0)
-                                    .optString(
-                                        "sourceUrl"
-                                    )
-
-                        }
-
-                    }
-
-
-                    /*
-                     * fallback proxy
-                     */
-
-                    if (
-                        videoUrl.isEmpty()
-                    ) {
-
-                        videoUrl =
-                            item.optString(
-                                "videoUrl"
-                            )
-
-                    }
-
-
-                    if (
-                        videoUrl.startsWith(
-                            "http://"
-                        )
-                    ) {
-
-                        videoUrl =
-                            "https://" +
-                            videoUrl.removePrefix(
-                                "http://"
-                            )
-
-                    }
-
-
-                    if (
-                        videoUrl.isNotEmpty()
-                    ) {
-
-                        loaded.add(
-
-                            Episode(
-
-                                index =
-                                    item.optInt(
-                                        "index",
-                                        i + 1
-                                    ),
-
-                                chapterId =
-                                    item.optString(
-                                        "chapterId"
-                                    ),
-
-                                url =
-                                    videoUrl,
-
-                                duration =
-                                    item.optInt(
-                                        "duration"
-                                    )
-                            )
-
-                        )
-
-                    }
-
-                }
-
-
-                if (
-                    loaded.isEmpty()
-                ) {
-
-                    throw Exception(
-                        "Tidak ada video"
-                    )
-
-                }
-
-
-                currentBookTitle =
-                    json.optString(
-                        "title",
-                        book.title
-                    )
-
-
-                runOnUiThread {
-
-                    episodes.clear()
-
-                    episodes.addAll(
-                        loaded
-                    )
-
-
-                    showPlayerScreen(
-                        0
-                    )
-
-                }
-
-            } catch (
-                e: Exception
-            ) {
-
-                e.printStackTrace()
-
-
-                runOnUiThread {
-
-                    Toast.makeText(
-                        this,
-                        "Gagal: ${e.message}",
-                        Toast.LENGTH_LONG
-                    ).show()
-
-                }
-
-            }
-
-        }.start()
-    }
-
-
-    /*
-     * =========================================================
-     * PLAYER SCREEN
-     * =========================================================
-     */
-
-    private fun showPlayerScreen(
-        startPosition: Int
-    ) {
-
-        root.removeAllViews()
-
-
-        val playerRoot =
-            FrameLayout(this)
-
-
-        playerRoot.setBackgroundColor(
-            Color.BLACK
-        )
-
-
-        root.addView(
-            playerRoot,
-            FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
-        )
-
-
-        /*
-         * EXOPLAYER
-         */
-
-        player =
-            ExoPlayer
-                .Builder(this)
-                .build()
-
-
-        playerView =
-            PlayerView(this)
-
-
-        playerView!!.player =
-            player
-
-
-        playerView!!.useController =
-            true
-
-
-        playerRoot.addView(
-            playerView,
-            FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
-        )
-
-
-        /*
-         * TOP BAR
-         */
-
-        val top =
-            LinearLayout(this)
-
-
-        top.orientation =
-            LinearLayout.HORIZONTAL
-
-
-        top.gravity =
-            Gravity.CENTER_VERTICAL
-
-
-        top.setPadding(
-            dp(10),
-            dp(25),
-            dp(10),
-            dp(10)
-        )
-
-
-        top.setBackgroundColor(
-            Color.argb(
-                150,
-                0,
-                0,
-                0
-            )
-        )
-
-
-        val back =
-            Button(this)
-
-
-        back.text =
-            "←"
-
-
-        top.addView(
-            back,
-            LinearLayout.LayoutParams(
-                dp(55),
-                dp(48)
-            )
-        )
-
-
-        titleText =
-            TextView(this)
-
-
-        titleText!!.text =
-            currentBookTitle
-
-
-        titleText!!.textSize =
-            14f
-
-
-        titleText!!.setTextColor(
-            Color.WHITE
-        )
-
-
-        titleText!!.gravity =
-            Gravity.CENTER
-
-
-        titleText!!.maxLines =
-            2
-
-
-        top.addView(
-            titleText,
-            LinearLayout.LayoutParams(
-                0,
-                dp(55),
-                1f
-            )
-        )
-
-
-        miniButton =
-            Button(this)
-
-
-        miniButton!!.text =
-            "MINI"
-
-
-        top.addView(
-            miniButton,
-            LinearLayout.LayoutParams(
-                dp(80),
-                dp(48)
-            )
-        )
-
-
-        playerRoot.addView(
-            top,
-            FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                Gravity.TOP
-            )
-        )
-
-
-        /*
-         * BOTTOM
-         */
-
-        val bottom =
-            LinearLayout(this)
-
-
-        bottom.orientation =
-            LinearLayout.HORIZONTAL
-
-
-        bottom.gravity =
-            Gravity.CENTER
-
-
-        bottom.setPadding(
-            dp(10),
-            dp(8),
-            dp(10),
-            dp(20)
-        )
-
-
-        bottom.setBackgroundColor(
-            Color.argb(
-                180,
-                0,
-                0,
-                0
-            )
-        )
-
-
-        val previous =
-            Button(this)
-
-
-        previous.text =
-            "‹"
-
-
-        bottom.addView(
-            previous,
-            LinearLayout.LayoutParams(
-                dp(70),
-                dp(52)
-            )
-        )
-
-
-        episodeButton =
-            Button(this)
-
-
-        bottom.addView(
-            episodeButton,
-            LinearLayout.LayoutParams(
-                0,
-                dp(52),
-                1f
-            )
-        )
-
-
-        val next =
-            Button(this)
-
-
-        next.text =
-            "›"
-
-
-        bottom.addView(
-            next,
-            LinearLayout.LayoutParams(
-                dp(70),
-                dp(52)
-            )
-        )
-
-
-        playerRoot.addView(
-            bottom,
-            FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                Gravity.BOTTOM
-            )
-        )
-
-
-        /*
-         * BUTTONS
-         */
-
-        back.setOnClickListener {
-
-            showSearchScreen()
-
-        }
-
-
-        miniButton!!.setOnClickListener {
-
-            enterPip()
-
-        }
-
-
-        previous.setOnClickListener {
-
-            previousEpisode()
-
-        }
-
-
-        next.setOnClickListener {
-
-            nextEpisode()
-
-        }
-
-
-        episodeButton!!.setOnClickListener {
-
-            showEpisodePicker()
-
-        }
-
-
-        /*
-         * SWIPE SHORTS
-         */
-
-        playerView!!.setOnTouchListener {
-                _,
-                event ->
-
-            when (
-                event.action
-            ) {
-
-                MotionEvent.ACTION_DOWN -> {
-
-                    touchStartY =
-                        event.rawY
-
-                }
-
-
-                MotionEvent.ACTION_UP -> {
-
-                    val difference =
-                        event.rawY -
-                        touchStartY
-
-
-                    if (
-                        difference < -150
-                    ) {
-
-                        nextEpisode()
-
-                        return@setOnTouchListener true
-
-                    }
-
-
-                    if (
-                        difference > 150
-                    ) {
-
-                        previousEpisode()
-
-                        return@setOnTouchListener true
-
-                    }
-
-                }
-
-            }
-
-
-            false
-        }
-
-
-        /*
-         * AUTO NEXT
-         */
-
-        player!!.addListener(
-
-            object : Player.Listener {
-
-                override fun onPlaybackStateChanged(
-                    state: Int
-                ) {
-
-                    if (
-                        state ==
-                        Player.STATE_ENDED
-                    ) {
-
-                        nextEpisode()
-
-                    }
-
-                }
-
-            }
-
-        )
-
-
-        playEpisode(
-            startPosition
-        )
-    }
-
-
-    /*
-     * =========================================================
-     * PLAY
-     * =========================================================
-     */
-
-    private fun playEpisode(
-        position: Int
-    ) {
-
         if (
-            position < 0 ||
-            position >= episodes.size
+            !Settings.canDrawOverlays(
+                this
+            )
         ) {
+
+            requestOverlayPermission()
+
             return
         }
 
 
-        currentEpisodePosition =
-            position
-
-
-        val episode =
-            episodes[
-                position
-            ]
-
-
-        episodeButton?.text =
-            "EP.${episode.index} / EP.${episodes.size}"
-
-
-        titleText?.text =
-            "$currentBookTitle\nEpisode ${episode.index}"
-
-
-        val mediaItem =
-            MediaItem.fromUri(
-                episode.url
-            )
-
-
-        player?.apply {
-
-            setMediaItem(
-                mediaItem
-            )
-
-            prepare()
-
-            playWhenReady =
-                true
-
-        }
-
-    }
-
-
-    private fun nextEpisode() {
-
-        val next =
-            currentEpisodePosition + 1
-
-
-        if (
-            next >= episodes.size
-        ) {
-
-            Toast.makeText(
+        val intent =
+            Intent(
                 this,
-                "Episode terakhir",
-                Toast.LENGTH_SHORT
-            ).show()
+                FloatingPlayerService::class.java
+            ).apply {
 
-
-            return
-
-        }
-
-
-        playEpisode(
-            next
-        )
-    }
-
-
-    private fun previousEpisode() {
-
-        val previous =
-            currentEpisodePosition - 1
-
-
-        if (
-            previous < 0
-        ) {
-            return
-        }
-
-
-        playEpisode(
-            previous
-        )
-    }
-
-
-    /*
-     * =========================================================
-     * EPISODE PICKER
-     * =========================================================
-     */
-
-    private fun showEpisodePicker() {
-
-        val dialog =
-            Dialog(this)
-
-
-        val outer =
-            LinearLayout(this)
-
-
-        outer.orientation =
-            LinearLayout.VERTICAL
-
-
-        outer.setPadding(
-            dp(14),
-            dp(14),
-            dp(14),
-            dp(20)
-        )
-
-
-        outer.setBackgroundColor(
-            Color.rgb(
-                24,
-                24,
-                24
-            )
-        )
-
-
-        val title =
-            TextView(this)
-
-
-        title.text =
-            "Pilih Episode"
-
-
-        title.textSize =
-            21f
-
-
-        title.setTypeface(
-            null,
-            Typeface.BOLD
-        )
-
-
-        title.setTextColor(
-            Color.WHITE
-        )
-
-
-        title.setPadding(
-            dp(6),
-            dp(5),
-            dp(6),
-            dp(15)
-        )
-
-
-        outer.addView(
-            title
-        )
-
-
-        val scroll =
-            ScrollView(this)
-
-
-        val grid =
-            GridLayout(this)
-
-
-        grid.columnCount =
-            4
-
-
-        grid.setPadding(
-            0,
-            0,
-            0,
-            dp(20)
-        )
-
-
-        episodes.forEachIndexed {
-                position,
-                episode ->
-
-
-            val button =
-                Button(this)
-
-
-            button.text =
-                "EP ${episode.index}"
-
-
-            val params =
-                GridLayout.LayoutParams()
-
-
-            params.width =
-                0
-
-
-            params.height =
-                dp(55)
-
-
-            params.columnSpec =
-                GridLayout.spec(
-                    GridLayout.UNDEFINED,
-                    1f
+                putExtra(
+                    FloatingPlayerService.EXTRA_BOOK_ID,
+                    book.id
                 )
 
-
-            params.setMargins(
-                dp(3),
-                dp(3),
-                dp(3),
-                dp(3)
-            )
-
-
-            button.layoutParams =
-                params
-
-
-            if (
-                position ==
-                currentEpisodePosition
-            ) {
-
-                button.alpha =
-                    1f
-
-            } else {
-
-                button.alpha =
-                    0.75f
-
-            }
-
-
-            button.setOnClickListener {
-
-                dialog.dismiss()
-
-                playEpisode(
-                    position
+                putExtra(
+                    FloatingPlayerService.EXTRA_BOOK_TITLE,
+                    book.title
                 )
-
             }
 
 
-            grid.addView(
-                button
-            )
-
-        }
-
-
-        scroll.addView(
-            grid
-        )
-
-
-        outer.addView(
-            scroll,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                0,
-                1f
-            )
-        )
-
-
-        dialog.setContentView(
-            outer
-        )
-
-
-        dialog.window?.setLayout(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            (resources.displayMetrics.heightPixels * 0.7).toInt()
-        )
-
-
-        dialog.show()
-
-
-        dialog.window?.setLayout(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            (resources.displayMetrics.heightPixels * 0.7).toInt()
-        )
-    }
-
-
-    /*
-     * =========================================================
-     * PICTURE IN PICTURE
-     * =========================================================
-     */
-
-    private fun enterPip() {
-
         if (
-            episodes.isEmpty()
+            Build.VERSION.SDK_INT >=
+            Build.VERSION_CODES.O
         ) {
-            return
+
+            startForegroundService(
+                intent
+            )
+
+        } else {
+
+            startService(
+                intent
+            )
         }
 
 
-        try {
+        /*
+         * Activity selesai.
+         * Android balik ke app/game sebelumnya.
+         */
 
-            val params =
-                PictureInPictureParams
-                    .Builder()
-
-                    .setAspectRatio(
-                        Rational(
-                            16,
-                            9
-                        )
-                    )
-
-                    .build()
-
-
-            enterPictureInPictureMode(
-                params
-            )
-
-        } catch (
-            e: Exception
-        ) {
-
-            Toast.makeText(
-                this,
-                "PiP gagal: ${e.message}",
-                Toast.LENGTH_SHORT
-            ).show()
-
-        }
-
+        finish()
     }
 
-
-    override fun onUserLeaveHint() {
-
-        super.onUserLeaveHint()
-
-
-        if (
-            player?.isPlaying ==
-            true
-        ) {
-
-            enterPip()
-
-        }
-
-    }
-
-
-    override fun onPictureInPictureModeChanged(
-        isInPictureInPictureMode: Boolean,
-        newConfig: Configuration
-    ) {
-
-        super.onPictureInPictureModeChanged(
-            isInPictureInPictureMode,
-            newConfig
-        )
-
-
-        playerView?.useController =
-            !isInPictureInPictureMode
-
-
-        titleText?.visibility =
-            if (
-                isInPictureInPictureMode
-            )
-                View.GONE
-            else
-                View.VISIBLE
-
-
-        miniButton?.visibility =
-            if (
-                isInPictureInPictureMode
-            )
-                View.GONE
-            else
-                View.VISIBLE
-
-    }
-
-
-    /*
-     * =========================================================
-     * HTTP
-     * =========================================================
-     */
 
     private fun httpGet(
         address: String
@@ -1768,24 +800,22 @@ class MainActivity : Activity() {
         connection.requestMethod =
             "GET"
 
-
         connection.connectTimeout =
             15000
-
 
         connection.readTimeout =
             25000
 
 
         connection.setRequestProperty(
-            "User-Agent",
-            "ReelShortFloating/1.0 Android"
+            "Accept",
+            "application/json"
         )
 
 
         connection.setRequestProperty(
-            "Accept",
-            "application/json"
+            "User-Agent",
+            "ReelShortFloating/2.0"
         )
 
 
@@ -1799,13 +829,9 @@ class MainActivity : Activity() {
                 if (
                     code in 200..299
                 ) {
-
                     connection.inputStream
-
                 } else {
-
                     connection.errorStream
-
                 }
 
 
@@ -1813,9 +839,7 @@ class MainActivity : Activity() {
                 stream
                     ?.bufferedReader()
                     ?.use {
-
                         it.readText()
-
                     }
                     ?: ""
 
@@ -1827,7 +851,6 @@ class MainActivity : Activity() {
                 throw Exception(
                     "HTTP $code"
                 )
-
             }
 
 
@@ -1836,16 +859,27 @@ class MainActivity : Activity() {
         } finally {
 
             connection.disconnect()
-
         }
     }
 
 
-    /*
-     * =========================================================
-     * UTILS
-     * =========================================================
-     */
+    private fun rounded(
+        color: Int,
+        radiusDp: Float
+    ): GradientDrawable {
+
+        return GradientDrawable().apply {
+
+            setColor(
+                color
+            )
+
+            cornerRadius =
+                dp(radiusDp)
+                    .toFloat()
+        }
+    }
+
 
     private fun dp(
         value: Int
@@ -1855,52 +889,16 @@ class MainActivity : Activity() {
             value *
             resources.displayMetrics.density
         ).toInt()
-
     }
 
 
-    private fun releasePlayer() {
+    private fun dp(
+        value: Float
+    ): Int {
 
-        playerView?.player =
-            null
-
-
-        playerView =
-            null
-
-
-        player?.release()
-
-
-        player =
-            null
-    }
-
-
-    @Deprecated(
-        "Deprecated in Java"
-    )
-    override fun onBackPressed() {
-
-        if (
-            player != null
-        ) {
-
-            showSearchScreen()
-
-        } else {
-
-            super.onBackPressed()
-
-        }
-
-    }
-
-
-    override fun onDestroy() {
-
-        releasePlayer()
-
-        super.onDestroy()
+        return (
+            value *
+            resources.displayMetrics.density
+        ).toInt()
     }
 }
