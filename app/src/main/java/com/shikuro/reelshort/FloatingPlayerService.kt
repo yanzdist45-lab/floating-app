@@ -134,8 +134,10 @@ class FloatingPlayerService : Service() {
                 menuPanel?.visibility !=
                 View.VISIBLE
             ) {
-                dotsView?.alpha =
-                    0f
+                dotsView?.animate()
+                    ?.alpha(0f)
+                    ?.setDuration(180)
+                    ?.start()
             }
         }
 
@@ -380,92 +382,44 @@ class FloatingPlayerService : Service() {
 
     private fun createExpandedWindow() {
 
-        val metrics =
-            resources.displayMetrics
-
-        val screenWidth =
-            metrics.widthPixels
-
-        val screenHeight =
-            metrics.heightPixels
+        val metrics = resources.displayMetrics
+        val screenWidth = metrics.widthPixels
+        val screenHeight = metrics.heightPixels
 
         val width =
-            if (
-                screenWidth >
-                screenHeight
-            ) {
-                (
-                    screenWidth *
-                    0.38f
-                ).toInt()
+            if (screenWidth > screenHeight) {
+                (screenWidth * 0.36f).toInt()
             } else {
-                (
-                    screenWidth *
-                    0.88f
-                ).toInt()
+                (screenWidth * 0.86f).toInt()
             }
 
-        /*
-         * Cuma bar ⋯ tipis + video.
-         * Tidak ada title, EP bar, atau resize icon.
-         */
-        val height =
-            (
-                width *
-                9f /
-                16f
-            ).toInt() +
-            dp(16)
+        val height = (width * 9f / 16f).toInt()
 
-        expandedParams =
-            WindowManager.LayoutParams(
-                width,
-                height,
+        expandedParams = WindowManager.LayoutParams(
+            width,
+            height,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            x = dp(20)
+            y = dp(80)
+        }
 
-                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+        val root = FrameLayout(this)
+        expandedRoot = root
 
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-
-                PixelFormat.TRANSLUCENT
-            ).apply {
-
-                gravity =
-                    Gravity.TOP or
-                    Gravity.START
-
-                x =
-                    dp(20)
-
-                y =
-                    dp(80)
-            }
-
-
-        val root =
-            FrameLayout(this)
-
-        expandedRoot =
-            root
-
-
-        val card =
-            LinearLayout(this).apply {
-
-                orientation =
-                    LinearLayout.VERTICAL
-
-                background =
-                    rounded(
-                        Color.rgb(
-                            10,
-                            10,
-                            10
-                        ),
-                        18f
-                    )
-            }
+        val card = FrameLayout(this).apply {
+            background = rounded(
+                Color.rgb(7, 8, 11),
+                20f
+            )
+            elevation = dp(10).toFloat()
+            clipToOutline = true
+        }
 
         root.addView(
             card,
@@ -475,89 +429,29 @@ class FloatingPlayerService : Service() {
             )
         )
 
-
-        /*
-         * Tiga titik ini sekaligus:
-         * - drag handle
-         * - tombol popup menu
-         * - auto-hide control
-         */
-        val dots =
-            TextView(this).apply {
-
-                text =
-                    "⋯"
-
-                textSize =
-                    20f
-
-                gravity =
-                    Gravity.CENTER
-
-                setTextColor(
-                    Color.WHITE
-                )
-
-                alpha =
-                    1f
-            }
-
-        dotsView =
-            dots
-
-        card.addView(
-            dots,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(16)
-            )
-        )
-
-        enableDotsDragAndMenu(
-            dots
-        )
-
-
-        val playerContainer =
-            FrameLayout(this).apply {
-                setBackgroundColor(
-                    Color.BLACK
-                )
-            }
+        val playerContainer = FrameLayout(this).apply {
+            setBackgroundColor(Color.BLACK)
+        }
 
         card.addView(
             playerContainer,
-            LinearLayout.LayoutParams(
+            FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                0,
-                1f
+                ViewGroup.LayoutParams.MATCH_PARENT
             )
         )
 
+        playerView = PlayerView(this).apply {
+            player = this@FloatingPlayerService.player
+            useController = false
+            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+            setBackgroundColor(Color.BLACK)
 
-        playerView =
-            PlayerView(this).apply {
-
-                player =
-                    this@FloatingPlayerService.player
-
-                useController =
-                    false
-
-                resizeMode =
-                    AspectRatioFrameLayout.RESIZE_MODE_FIT
-
-                setBackgroundColor(
-                    Color.BLACK
-                )
-
-                setOnClickListener {
-
-                    togglePlayPause()
-
-                    showDotsTemporarily()
-                }
+            setOnClickListener {
+                togglePlayPause()
+                showDotsTemporarily()
             }
+        }
 
         playerContainer.addView(
             playerView,
@@ -567,32 +461,13 @@ class FloatingPlayerService : Service() {
             )
         )
 
-
-        loadingText =
-            TextView(this).apply {
-
-                text =
-                    "Memuat..."
-
-                textSize =
-                    12f
-
-                gravity =
-                    Gravity.CENTER
-
-                setTextColor(
-                    Color.WHITE
-                )
-
-                setBackgroundColor(
-                    Color.argb(
-                        70,
-                        0,
-                        0,
-                        0
-                    )
-                )
-            }
+        loadingText = TextView(this).apply {
+            text = "Memuat..."
+            textSize = 12f
+            gravity = Gravity.CENTER
+            setTextColor(Color.WHITE)
+            setBackgroundColor(Color.argb(48, 0, 0, 0))
+        }
 
         playerContainer.addView(
             loadingText,
@@ -602,46 +477,57 @@ class FloatingPlayerService : Service() {
             )
         )
 
-
         /*
-         * Resize tetap ada tapi 100% invisible.
-         * Drag pojok kanan bawah.
+         * Premium mode: ⋯ mengambang di atas video.
+         * Tidak ada lagi bar hitam permanen.
          */
-        val resize =
-            View(this).apply {
-                setBackgroundColor(
-                    Color.TRANSPARENT
-                )
-            }
+        val dots = TextView(this).apply {
+            text = "⋯"
+            textSize = 20f
+            gravity = Gravity.CENTER
+            setTextColor(Color.WHITE)
+            background = rounded(
+                Color.argb(145, 15, 17, 22),
+                999f
+            )
+            elevation = dp(6).toFloat()
+            alpha = 1f
+        }
 
-        resizeZone =
-            resize
+        dotsView = dots
+
+        card.addView(
+            dots,
+            FrameLayout.LayoutParams(
+                dp(52),
+                dp(26),
+                Gravity.TOP or Gravity.CENTER_HORIZONTAL
+            ).apply {
+                topMargin = dp(6)
+            }
+        )
+
+        enableDotsDragAndMenu(dots)
+
+        val resize = View(this).apply {
+            setBackgroundColor(Color.TRANSPARENT)
+        }
+
+        resizeZone = resize
 
         root.addView(
             resize,
             FrameLayout.LayoutParams(
-                dp(34),
-                dp(34),
-                Gravity.BOTTOM or
-                    Gravity.END
+                dp(38),
+                dp(38),
+                Gravity.BOTTOM or Gravity.END
             )
         )
 
-        enableResize(
-            resize
-        )
+        enableResize(resize)
+        createMenu(root)
 
-
-        createMenu(
-            root
-        )
-
-
-        wm.addView(
-            root,
-            expandedParams
-        )
-
+        wm.addView(root, expandedParams)
         showDotsTemporarily()
     }
 
@@ -658,12 +544,14 @@ class FloatingPlayerService : Service() {
             autoHideDots
         )
 
-        dotsView?.alpha =
-            1f
+        dotsView?.animate()
+            ?.alpha(1f)
+            ?.setDuration(120)
+            ?.start()
 
         handler.postDelayed(
             autoHideDots,
-            2200
+            1800
         )
     }
 
@@ -846,12 +734,13 @@ class FloatingPlayerService : Service() {
 
                 background =
                     rounded(
-                        Color.rgb(
-                            38,
-                            38,
-                            38
+                        Color.argb(
+                            238,
+                            24,
+                            27,
+                            34
                         ),
-                        14f
+                        18f
                     )
 
                 setPadding(
@@ -902,13 +791,13 @@ class FloatingPlayerService : Service() {
         parent.addView(
             menu,
             FrameLayout.LayoutParams(
-                dp(205),
+                dp(192),
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 Gravity.TOP or
                     Gravity.CENTER_HORIZONTAL
             ).apply {
                 topMargin =
-                    dp(18)
+                    dp(36)
             }
         )
 
@@ -951,7 +840,7 @@ class FloatingPlayerService : Service() {
             layoutParams =
                 LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
-                    dp(44)
+                    dp(42)
                 )
         }
     }
@@ -1087,100 +976,50 @@ class FloatingPlayerService : Service() {
 
     private fun createBubbleWindow() {
 
-        bubbleParams =
-            WindowManager.LayoutParams(
-                dp(56),
-                dp(56),
+        bubbleParams = WindowManager.LayoutParams(
+            dp(50),
+            dp(50),
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            x = dp(20)
+            y = dp(120)
+        }
 
-                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+        val root = FrameLayout(this)
 
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
-
-                PixelFormat.TRANSLUCENT
-            ).apply {
-
-                gravity =
-                    Gravity.TOP or
-                    Gravity.START
-
-                x =
-                    dp(20)
-
-                y =
-                    dp(120)
-            }
-
-
-        val root =
-            FrameLayout(this)
-
-
-        val icon =
-            TextView(this).apply {
-
-                text =
-                    "R"
-
-                textSize =
-                    20f
-
-                gravity =
-                    Gravity.CENTER
-
-                setTextColor(
-                    Color.WHITE
+        val icon = TextView(this).apply {
+            text = "▶"
+            textSize = 17f
+            gravity = Gravity.CENTER
+            setTextColor(Color.WHITE)
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(Color.argb(244, 20, 23, 30))
+                setStroke(
+                    dp(1),
+                    Color.argb(50, 255, 255, 255)
                 )
-
-                background =
-                    GradientDrawable().apply {
-
-                        shape =
-                            GradientDrawable.OVAL
-
-                        setColor(
-                            Color.rgb(
-                                24,
-                                24,
-                                24
-                            )
-                        )
-
-                        setStroke(
-                            dp(1),
-                            Color.rgb(
-                                80,
-                                80,
-                                80
-                            )
-                        )
-                    }
             }
-
+            elevation = dp(8).toFloat()
+        }
 
         root.addView(
             icon,
             FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
+                dp(48),
+                dp(48),
+                Gravity.CENTER
             )
         )
 
-
-        root.visibility =
-            View.GONE
-
-        enableBubbleDrag(
-            root
-        )
-
-        bubbleRoot =
-            root
-
-        wm.addView(
-            root,
-            bubbleParams
-        )
+        root.visibility = View.GONE
+        enableBubbleDrag(root)
+        bubbleRoot = root
+        wm.addView(root, bubbleParams)
     }
 
 
@@ -1782,7 +1621,7 @@ class FloatingPlayerService : Service() {
 
         connection.setRequestProperty(
             "User-Agent",
-            "ReelShortFloating/4.0 Android"
+            "ReelShortFloating/5.0 Android"
         )
 
         try {
@@ -1835,6 +1674,11 @@ class FloatingPlayerService : Service() {
             cornerRadius =
                 dp(radiusDp)
                     .toFloat()
+
+            setStroke(
+                dp(1),
+                Color.argb(28, 255, 255, 255)
+            )
         }
     }
 

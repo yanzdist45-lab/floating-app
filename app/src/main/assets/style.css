@@ -547,3 +547,135 @@ button {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* =========================
+   MODE PICKER / PREMIUM HOME
+========================= */
+
+.mode-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 299;
+  background: rgba(0, 0, 0, 0.58);
+  backdrop-filter: blur(7px);
+}
+
+.mode-sheet {
+  position: fixed;
+  z-index: 300;
+  left: 50%;
+  bottom: 0;
+  width: min(100%, 560px);
+  transform: translate(-50%, 110%);
+  transition: transform 0.28s cubic-bezier(.2,.8,.2,1);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-bottom: 0;
+  border-radius: 28px 28px 0 0;
+  padding: 10px 16px max(22px, env(safe-area-inset-bottom));
+  background:
+    linear-gradient(180deg, rgba(27,32,42,0.98), rgba(12,15,21,0.99));
+  box-shadow: 0 -24px 60px rgba(0,0,0,0.48);
+}
+
+.mode-sheet.open {
+  transform: translate(-50%, 0);
+}
+
+.mode-handle {
+  width: 44px;
+  height: 5px;
+  margin: 2px auto 16px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.25);
+}
+
+.mode-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.mode-header h2 {
+  margin: 0;
+  font-size: 21px;
+  letter-spacing: -0.2px;
+}
+
+.mode-header p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  max-width: 360px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.mode-close {
+  width: 40px;
+  height: 40px;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 999px;
+  background: rgba(255,255,255,0.06);
+  color: white;
+  font-size: 18px;
+}
+
+.mode-option {
+  width: 100%;
+  min-height: 82px;
+  margin-top: 10px;
+  padding: 14px;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 20px;
+  background:
+    linear-gradient(135deg, rgba(255,255,255,0.075), rgba(255,255,255,0.025));
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  text-align: left;
+  box-shadow: 0 10px 28px rgba(0,0,0,0.18);
+}
+
+.mode-option:active,
+.movie-card:active,
+.search-box button:active {
+  transform: scale(0.985);
+}
+
+.mode-icon {
+  width: 50px;
+  height: 50px;
+  flex: 0 0 50px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 16px;
+  background: rgba(255,255,255,0.08);
+  font-size: 24px;
+}
+
+.mode-option strong {
+  display: block;
+  font-size: 15px;
+  color: #fff;
+}
+
+.mode-option small {
+  display: block;
+  margin-top: 5px;
+  color: var(--muted);
+  line-height: 1.4;
+  font-size: 12px;
+}
+
+.movie-card {
+  transition: transform 0.16s ease, border-color 0.16s ease;
+}
+
+.movie-card:active {
+  border-color: rgba(255,255,255,0.18);
+}
+
