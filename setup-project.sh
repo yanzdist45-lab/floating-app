@@ -2008,7 +2008,7 @@ class FloatingPlayerService : Service() {
                 9f /
                 16f
             ).toInt() +
-            dp(16)
+            dp(8)
 
         expandedParams =
             WindowManager.LayoutParams(
