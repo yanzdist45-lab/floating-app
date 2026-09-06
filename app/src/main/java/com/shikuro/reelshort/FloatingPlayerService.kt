@@ -415,7 +415,7 @@ class FloatingPlayerService : Service() {
                 9f /
                 16f
             ).toInt() +
-            dp(14)
+            dp(16)
 
         expandedParams =
             WindowManager.LayoutParams(
@@ -456,12 +456,6 @@ class FloatingPlayerService : Service() {
                 orientation =
                     LinearLayout.VERTICAL
 
-                clipToOutline =
-                    true
-
-                elevation =
-                    dp(8).toFloat()
-
                 background =
                     rounded(
                         Color.rgb(
@@ -495,7 +489,7 @@ class FloatingPlayerService : Service() {
                     "⋯"
 
                 textSize =
-                    18f
+                    20f
 
                 gravity =
                     Gravity.CENTER
@@ -515,7 +509,7 @@ class FloatingPlayerService : Service() {
             dots,
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(14)
+                dp(16)
             )
         )
 
@@ -626,8 +620,8 @@ class FloatingPlayerService : Service() {
         root.addView(
             resize,
             FrameLayout.LayoutParams(
-                dp(82),
-                dp(82),
+                dp(34),
+                dp(34),
                 Gravity.BOTTOM or
                     Gravity.END
             )
@@ -914,7 +908,7 @@ class FloatingPlayerService : Service() {
                     Gravity.CENTER_HORIZONTAL
             ).apply {
                 topMargin =
-                    dp(15)
+                    dp(18)
             }
         )
 
@@ -1363,73 +1357,123 @@ class FloatingPlayerService : Service() {
     private fun enableResize(
         target: View
     ) {
+
         target.setOnTouchListener(
             object : View.OnTouchListener {
 
-                var startWidth = 0
-                var touchX = 0f
-                var touchY = 0f
+                var startWidth =
+                    0
+
+                var startHeight =
+                    0
+
+                var touchX =
+                    0f
+
+                var touchY =
+                    0f
+
 
                 override fun onTouch(
                     view: View?,
                     event: MotionEvent
                 ): Boolean {
 
-                    if (fullscreen) return true
+                    if (fullscreen) {
+                        return false
+                    }
 
-                    val params = expandedParams ?: return false
+                    val params =
+                        expandedParams
+                            ?: return false
 
-                    when (event.actionMasked) {
+                    when (
+                        event.action
+                    ) {
+
                         MotionEvent.ACTION_DOWN -> {
-                            startWidth = params.width
-                            touchX = event.rawX
-                            touchY = event.rawY
-                            handler.removeCallbacks(autoHideDots)
+
+                            startWidth =
+                                params.width
+
+                            startHeight =
+                                params.height
+
+                            touchX =
+                                event.rawX
+
+                            touchY =
+                                event.rawY
+
                             return true
                         }
+
 
                         MotionEvent.ACTION_MOVE -> {
-                            val dx = event.rawX - touchX
-                            val dy = event.rawY - touchY
 
-                            val widthDelta = if (abs(dx) >= abs(dy)) {
-                                dx.toInt()
-                            } else {
-                                (dy * 16f / 9f).toInt()
-                            }
+                            val metrics =
+                                resources.displayMetrics
 
-                            val metrics = resources.displayMetrics
-                            val minWidth = dp(210)
-                            val maxWidth = (metrics.widthPixels - params.x)
-                                .coerceAtLeast(minWidth)
+                            val dx =
+                                (
+                                    event.rawX -
+                                    touchX
+                                ).toInt()
 
-                            var newWidth = (startWidth + widthDelta)
-                                .coerceIn(minWidth, maxWidth)
+                            val dy =
+                                (
+                                    event.rawY -
+                                    touchY
+                                ).toInt()
 
-                            val chromeHeight = dp(14)
-                            var newHeight = (newWidth * 9f / 16f).toInt() + chromeHeight
-                            val maxHeight = (metrics.heightPixels - params.y)
-                                .coerceAtLeast(dp(150))
+                            val minWidth =
+                                dp(220)
 
-                            if (newHeight > maxHeight) {
-                                newHeight = maxHeight
-                                newWidth = (((newHeight - chromeHeight) * 16f) / 9f)
-                                    .toInt()
-                                    .coerceIn(minWidth, maxWidth)
-                            }
+                            val minHeight =
+                                dp(155)
 
-                            params.width = newWidth
-                            params.height = newHeight
+                            val maxWidth =
+                                (
+                                    metrics.widthPixels -
+                                    params.x
+                                ).coerceAtLeast(
+                                    minWidth
+                                )
+
+                            val maxHeight =
+                                (
+                                    metrics.heightPixels -
+                                    params.y
+                                ).coerceAtLeast(
+                                    minHeight
+                                )
+
+                            params.width =
+                                (
+                                    startWidth +
+                                    dx
+                                ).coerceIn(
+                                    minWidth,
+                                    maxWidth
+                                )
+
+                            params.height =
+                                (
+                                    startHeight +
+                                    dy
+                                ).coerceIn(
+                                    minHeight,
+                                    maxHeight
+                                )
 
                             expandedRoot?.let {
-                                wm.updateViewLayout(it, params)
-                            }
-                            return true
-                        }
 
-                        MotionEvent.ACTION_UP,
-                        MotionEvent.ACTION_CANCEL -> {
-                            showDotsTemporarily()
+                                wm.updateViewLayout(
+                                    it,
+                                    params
+                                )
+                            }
+
                             return true
                         }
                     }

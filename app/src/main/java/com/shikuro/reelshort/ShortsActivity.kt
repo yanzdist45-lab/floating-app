@@ -4,7 +4,6 @@ import android.app.Activity
 import android.app.Dialog
 import android.graphics.Color
 import android.graphics.Typeface
-import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -12,6 +11,7 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.GridLayout
 import android.widget.LinearLayout
@@ -27,14 +27,15 @@ import androidx.media3.ui.PlayerView
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
-import kotlin.math.abs
 
 class ShortsActivity : Activity() {
 
     companion object {
         const val EXTRA_BOOK_ID = "book_id"
         const val EXTRA_BOOK_TITLE = "book_title"
-        private const val API = "https://reelshort.vercel.app"
+
+        private const val API =
+            "https://reelshort.vercel.app"
     }
 
     data class Episode(
@@ -43,71 +44,140 @@ class ShortsActivity : Activity() {
     )
 
     private lateinit var root: FrameLayout
-    private lateinit var player: ExoPlayer
     private lateinit var playerView: PlayerView
+    private lateinit var player: ExoPlayer
+
     private lateinit var topControls: LinearLayout
     private lateinit var bottomControls: LinearLayout
+
     private lateinit var titleText: TextView
     private lateinit var episodeText: TextView
     private lateinit var loadingText: TextView
-    private lateinit var centerPlay: TextView
 
-    private val episodes = mutableListOf<Episode>()
+    private val episodes =
+        mutableListOf<Episode>()
+
     private var currentPosition = 0
+
     private var bookId = ""
     private var bookTitle = ""
 
-    private var touchStartX = 0f
     private var touchStartY = 0f
+    private var touchStartX = 0f
     private var touchStartedAt = 0L
 
-    private val handler = Handler(Looper.getMainLooper())
-    private val hideControlsRunnable = Runnable { setControlsVisible(false) }
+    private val handler =
+        Handler(Looper.getMainLooper())
 
-    override fun onCreate(savedInstanceState: Bundle?) {
+    private val hideControlsRunnable =
+        Runnable {
+            setControlsVisible(false)
+        }
+
+
+    override fun onCreate(
+        savedInstanceState: Bundle?
+    ) {
         super.onCreate(savedInstanceState)
 
-        try {
-            bookId = intent.getStringExtra(EXTRA_BOOK_ID).orEmpty()
-            bookTitle = intent.getStringExtra(EXTRA_BOOK_TITLE).orEmpty()
+        bookId =
+            intent.getStringExtra(
+                EXTRA_BOOK_ID
+            )
+                .orEmpty()
 
-            if (bookId.isBlank()) {
-                finish()
-                return
-            }
+        bookTitle =
+            intent.getStringExtra(
+                EXTRA_BOOK_TITLE
+            )
+                .orEmpty()
 
-            window.statusBarColor = Color.BLACK
-            window.navigationBarColor = Color.BLACK
-
-            // Init player BEFORE building UI. This avoids lateinit ordering crashes.
-            player = ExoPlayer.Builder(this).build()
-            buildUi()
-            installPlayerListener()
-            loadEpisodes()
-
-        } catch (error: Throwable) {
-            error.printStackTrace()
-            Toast.makeText(
-                this,
-                "Shorts gagal dibuka: ${error.javaClass.simpleName}",
-                Toast.LENGTH_LONG
-            ).show()
+        if (bookId.isBlank()) {
             finish()
+            return
         }
+
+        window.statusBarColor =
+            Color.BLACK
+
+        window.navigationBarColor =
+            Color.BLACK
+
+        buildUi()
+
+        player =
+            ExoPlayer.Builder(this)
+                .build()
+
+        playerView.player =
+            player
+
+        player.addListener(
+            object : Player.Listener {
+
+                override fun onPlaybackStateChanged(
+                    state: Int
+                ) {
+                    when (state) {
+
+                        Player.STATE_BUFFERING -> {
+                            loadingText.visibility =
+                                View.VISIBLE
+
+                            loadingText.text =
+                                "Memuat..."
+                        }
+
+                        Player.STATE_READY -> {
+                            loadingText.visibility =
+                                View.GONE
+                        }
+
+                        Player.STATE_ENDED -> {
+                            nextEpisode()
+                        }
+                    }
+                }
+
+                override fun onPlayerError(
+                    error: PlaybackException
+                ) {
+                    loadingText.visibility =
+                        View.VISIBLE
+
+                    loadingText.text =
+                        "Video gagal diputar"
+                }
+            }
+        )
+
+        loadEpisodes()
     }
 
+
     private fun buildUi() {
-        root = FrameLayout(this).apply {
-            setBackgroundColor(Color.BLACK)
-        }
+
+        root =
+            FrameLayout(this).apply {
+                setBackgroundColor(
+                    Color.BLACK
+                )
+            }
+
         setContentView(root)
 
-        playerView = PlayerView(this).apply {
-            player = this@ShortsActivity.player
-            useController = false
-            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-            setBackgroundColor(Color.BLACK)
-        }
+
+        playerView =
+            PlayerView(this).apply {
+                useController = false
+
+                resizeMode =
+                    AspectRatioFrameLayout.RESIZE_MODE_FIT
+
+                setBackgroundColor(
+                    Color.BLACK
+                )
+            }
 
         root.addView(
             playerView,
@@ -117,13 +187,32 @@ class ShortsActivity : Activity() {
             )
         )
 
-        loadingText = TextView(this).apply {
-            text = "Memuat episode..."
-            gravity = Gravity.CENTER
-            textSize = 13f
-            setTextColor(Color.WHITE)
-            setBackgroundColor(Color.argb(55, 0, 0, 0))
-        }
+
+        loadingText =
+            TextView(this).apply {
+                text =
+                    "Memuat episode..."
+
+                gravity =
+                    Gravity.CENTER
+
+                textSize =
+                    14f
+
+                setTextColor(
+                    Color.argb(235, 255, 255, 255)
+                )
+
+                setBackgroundColor(
+                    Color.argb(
+                        70,
+                        0,
+                        0,
+                        0
+                    )
+                )
+            }
+
         root.addView(
             loadingText,
             FrameLayout.LayoutParams(
@@ -132,64 +221,112 @@ class ShortsActivity : Activity() {
             )
         )
 
-        centerPlay = TextView(this).apply {
-            text = "▶"
-            textSize = 26f
-            gravity = Gravity.CENTER
-            setTextColor(Color.WHITE)
-            visibility = View.GONE
-            background = rounded(Color.argb(190, 20, 23, 30), 999f)
-            setOnClickListener {
-                togglePlayPause()
-                showControlsTemporarily()
+
+        topControls =
+            LinearLayout(this).apply {
+
+                orientation =
+                    LinearLayout.HORIZONTAL
+
+                gravity =
+                    Gravity.CENTER_VERTICAL
+
+                setPadding(
+                    dp(12),
+                    dp(10),
+                    dp(12),
+                    dp(10)
+                )
+
+                setBackgroundColor(
+                    Color.argb(
+                        130,
+                        0,
+                        0,
+                        0
+                    )
+                )
             }
-        }
-        root.addView(
-            centerPlay,
-            FrameLayout.LayoutParams(dp(68), dp(68), Gravity.CENTER)
+
+        val back =
+            Button(this).apply {
+                text = "←"
+
+                setOnClickListener {
+                    finish()
+                }
+            }
+
+        topControls.addView(
+            back,
+            LinearLayout.LayoutParams(
+                dp(52),
+                dp(46)
+            )
         )
 
-        topControls = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(12), dp(12), dp(12), dp(8))
-            setBackgroundColor(Color.argb(90, 0, 0, 0))
-        }
+        val titleBox =
+            LinearLayout(this).apply {
+                orientation =
+                    LinearLayout.VERTICAL
 
-        val back = TextView(this).apply {
-            text = "‹"
-            textSize = 34f
-            gravity = Gravity.CENTER
-            setTextColor(Color.WHITE)
-            background = rounded(Color.argb(120, 24, 27, 34), 999f)
-            setOnClickListener { finish() }
-        }
-        topControls.addView(back, LinearLayout.LayoutParams(dp(44), dp(44)))
+                setPadding(
+                    dp(10),
+                    0,
+                    0,
+                    0
+                )
+            }
 
-        val titleBox = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(12), 0, 0, 0)
-        }
+        titleText =
+            TextView(this).apply {
+                text =
+                    bookTitle
 
-        titleText = TextView(this).apply {
-            text = bookTitle
-            textSize = 14f
-            maxLines = 1
-            setTextColor(Color.WHITE)
-            setTypeface(null, Typeface.BOLD)
-        }
+                textSize =
+                    14f
 
-        episodeText = TextView(this).apply {
-            text = "Episode"
-            textSize = 11f
-            setTextColor(Color.argb(190, 255, 255, 255))
-        }
+                maxLines =
+                    1
 
-        titleBox.addView(titleText)
-        titleBox.addView(episodeText)
+                setTextColor(
+                    Color.WHITE
+                )
+
+                setTypeface(
+                    null,
+                    Typeface.BOLD
+                )
+            }
+
+        episodeText =
+            TextView(this).apply {
+                text =
+                    "Episode"
+
+                textSize =
+                    12f
+
+                setTextColor(
+                    Color.LTGRAY
+                )
+            }
+
+        titleBox.addView(
+            titleText
+        )
+
+        titleBox.addView(
+            episodeText
+        )
+
         topControls.addView(
             titleBox,
-            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            LinearLayout.LayoutParams(
+                0,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                1f
+            )
         )
 
         root.addView(
@@ -201,33 +338,91 @@ class ShortsActivity : Activity() {
             )
         )
 
-        bottomControls = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(14), dp(10), dp(14), dp(18))
-            setBackgroundColor(Color.argb(100, 0, 0, 0))
-        }
 
-        val previous = compactButton("‹") {
-            previousEpisode()
-            showControlsTemporarily()
-        }
+        bottomControls =
+            LinearLayout(this).apply {
 
-        val picker = compactButton("Episode") {
-            showEpisodePicker()
-            showControlsTemporarily()
-        }.apply { tag = "episode_picker" }
+                orientation =
+                    LinearLayout.HORIZONTAL
 
-        val next = compactButton("›") {
-            nextEpisode()
-            showControlsTemporarily()
-        }
+                gravity =
+                    Gravity.CENTER
 
-        bottomControls.addView(previous, LinearLayout.LayoutParams(dp(48), dp(44)))
-        bottomControls.addView(picker, LinearLayout.LayoutParams(0, dp(44), 1f).apply {
-            setMargins(dp(8), 0, dp(8), 0)
-        })
-        bottomControls.addView(next, LinearLayout.LayoutParams(dp(48), dp(44)))
+                setPadding(
+                    dp(16),
+                    dp(10),
+                    dp(16),
+                    dp(18)
+                )
+
+                setBackgroundColor(
+                    Color.argb(
+                        145,
+                        0,
+                        0,
+                        0
+                    )
+                )
+            }
+
+        val previous =
+            Button(this).apply {
+                text = "‹"
+
+                setOnClickListener {
+                    previousEpisode()
+                    showControlsTemporarily()
+                }
+            }
+
+        val episodePicker =
+            Button(this).apply {
+                text =
+                    "Episode"
+
+                setOnClickListener {
+                    showEpisodePicker()
+                    showControlsTemporarily()
+                }
+            }
+
+        val next =
+            Button(this).apply {
+                text = "›"
+
+                setOnClickListener {
+                    nextEpisode()
+                    showControlsTemporarily()
+                }
+            }
+
+        bottomControls.addView(
+            previous,
+            LinearLayout.LayoutParams(
+                dp(58),
+                dp(48)
+            )
+        )
+
+        bottomControls.addView(
+            episodePicker,
+            LinearLayout.LayoutParams(
+                0,
+                dp(48),
+                1f
+            )
+        )
+
+        bottomControls.addView(
+            next,
+            LinearLayout.LayoutParams(
+                dp(58),
+                dp(48)
+            )
+        )
+
+        episodePicker.tag =
+            "episode_picker"
 
         root.addView(
             bottomControls,
@@ -238,296 +433,601 @@ class ShortsActivity : Activity() {
             )
         )
 
-        playerView.setOnTouchListener { _, event ->
-            when (event.actionMasked) {
+
+        playerView.setOnTouchListener {
+                _,
+                event ->
+
+            when (event.action) {
+
                 MotionEvent.ACTION_DOWN -> {
-                    touchStartX = event.rawX
-                    touchStartY = event.rawY
-                    touchStartedAt = System.currentTimeMillis()
+
+                    touchStartX =
+                        event.rawX
+
+                    touchStartY =
+                        event.rawY
+
+                    touchStartedAt =
+                        System.currentTimeMillis()
+
                     true
                 }
 
                 MotionEvent.ACTION_UP -> {
-                    val dx = event.rawX - touchStartX
-                    val dy = event.rawY - touchStartY
-                    val elapsed = System.currentTimeMillis() - touchStartedAt
-                    val vertical = abs(dy) > abs(dx)
 
-                    when {
-                        elapsed < 900 && vertical && dy < -dp(72) -> nextEpisode()
-                        elapsed < 900 && vertical && dy > dp(72) -> previousEpisode()
-                        abs(dx) < dp(18) && abs(dy) < dp(18) -> togglePlayPause()
+                    val dx =
+                        event.rawX -
+                        touchStartX
+
+                    val dy =
+                        event.rawY -
+                        touchStartY
+
+                    val elapsed =
+                        System.currentTimeMillis() -
+                        touchStartedAt
+
+                    val vertical =
+                        kotlin.math.abs(dy) >
+                        kotlin.math.abs(dx)
+
+                    if (
+                        elapsed < 900 &&
+                        vertical &&
+                        dy < -dp(70)
+                    ) {
+                        nextEpisode()
+                        showControlsTemporarily()
+                        true
+                    } else if (
+                        elapsed < 900 &&
+                        vertical &&
+                        dy > dp(70)
+                    ) {
+                        previousEpisode()
+                        showControlsTemporarily()
+                        true
+                    } else {
+                        togglePlayPause()
+                        showControlsTemporarily()
+                        true
                     }
-
-                    showControlsTemporarily()
-                    true
                 }
 
-                MotionEvent.ACTION_CANCEL -> true
                 else -> true
             }
         }
     }
 
-    private fun installPlayerListener() {
-        player.addListener(
-            object : Player.Listener {
-                override fun onPlaybackStateChanged(state: Int) {
-                    when (state) {
-                        Player.STATE_BUFFERING -> {
-                            loadingText.visibility = View.VISIBLE
-                            loadingText.text = "Memuat..."
-                        }
-                        Player.STATE_READY -> {
-                            loadingText.visibility = View.GONE
-                        }
-                        Player.STATE_ENDED -> nextEpisode()
-                    }
-                }
-
-                override fun onIsPlayingChanged(isPlaying: Boolean) {
-                    centerPlay.visibility = if (isPlaying) View.GONE else View.VISIBLE
-                    if (isPlaying) showControlsTemporarily() else setControlsVisible(true)
-                }
-
-                override fun onPlayerError(error: PlaybackException) {
-                    loadingText.visibility = View.VISIBLE
-                    loadingText.text = "Video gagal diputar"
-                }
-            }
-        )
-    }
 
     private fun loadEpisodes() {
+
         Thread {
+
             try {
-                val body = httpGet(
-                    "$API/api/stream/all-episode?lang=in&bookId=$bookId"
-                )
-                val json = JSONObject(body)
-                if (!json.optBoolean("ok")) throw Exception("API episode gagal")
 
-                val array = json.getJSONArray("episodes")
-                val loaded = mutableListOf<Episode>()
+                val body =
+                    httpGet(
+                        "$API/api/stream/all-episode?lang=in&bookId=$bookId"
+                    )
 
-                for (i in 0 until array.length()) {
-                    val item = array.getJSONObject(i)
-                    val url = selectVideoUrl(item)
+                val json =
+                    JSONObject(body)
+
+                if (
+                    !json.optBoolean("ok")
+                ) {
+                    throw Exception(
+                        "API episode gagal"
+                    )
+                }
+
+                val array =
+                    json.getJSONArray(
+                        "episodes"
+                    )
+
+                val loaded =
+                    mutableListOf<Episode>()
+
+                for (
+                    i in 0 until array.length()
+                ) {
+
+                    val item =
+                        array.getJSONObject(i)
+
+                    val url =
+                        selectVideoUrl(item)
+
                     if (url.isNotBlank()) {
-                        loaded.add(Episode(item.optInt("index", i + 1), url))
+                        loaded.add(
+                            Episode(
+                                index =
+                                    item.optInt(
+                                        "index",
+                                        i + 1
+                                    ),
+                                url = url
+                            )
+                        )
                     }
                 }
 
-                if (loaded.isEmpty()) throw Exception("Tidak ada stream")
-                val realTitle = json.optString("title", bookTitle)
+                if (loaded.isEmpty()) {
+                    throw Exception(
+                        "Tidak ada stream"
+                    )
+                }
+
+                val realTitle =
+                    json.optString(
+                        "title",
+                        bookTitle
+                    )
 
                 runOnUiThread {
-                    if (isFinishing || isDestroyed) return@runOnUiThread
-                    episodes.clear()
-                    episodes.addAll(loaded)
-                    bookTitle = realTitle
-                    titleText.text = realTitle
 
-                    val saved = getSharedPreferences("player", MODE_PRIVATE)
-                        .getInt("episode_$bookId", 0)
-                    currentPosition = saved.coerceIn(0, episodes.lastIndex)
-                    playEpisode(currentPosition)
+                    episodes.clear()
+
+                    episodes.addAll(
+                        loaded
+                    )
+
+                    bookTitle =
+                        realTitle
+
+                    titleText.text =
+                        realTitle
+
+                    val saved =
+                        getSharedPreferences(
+                            "player",
+                            MODE_PRIVATE
+                        )
+                            .getInt(
+                                "episode_$bookId",
+                                0
+                            )
+
+                    currentPosition =
+                        saved.coerceIn(
+                            0,
+                            episodes.lastIndex
+                        )
+
+                    playEpisode(
+                        currentPosition
+                    )
+
                     showControlsTemporarily()
                 }
-            } catch (error: Exception) {
+
+            } catch (
+                error: Exception
+            ) {
+
                 error.printStackTrace()
+
                 runOnUiThread {
-                    if (isFinishing || isDestroyed) return@runOnUiThread
-                    loadingText.visibility = View.VISIBLE
+                    loadingText.visibility =
+                        View.VISIBLE
+
                     loadingText.text =
                         "Gagal memuat episode: ${error.message.orEmpty()}"
+
+                    Toast.makeText(
+                        this,
+                        error.message ?: "Gagal",
+                        Toast.LENGTH_LONG
+                    ).show()
                 }
             }
+
         }.start()
     }
 
-    private fun playEpisode(position: Int) {
-        if (position !in episodes.indices || isFinishing || isDestroyed) return
 
-        currentPosition = position
-        val episode = episodes[position]
-        episodeText.text = "Episode ${episode.index} / ${episodes.size}"
+    private fun playEpisode(
+        position: Int
+    ) {
 
-        bottomControls.findViewWithTag<TextView>("episode_picker")?.text =
+        if (
+            position !in episodes.indices
+        ) return
+
+        currentPosition =
+            position
+
+        val episode =
+            episodes[position]
+
+        episodeText.text =
+            "Episode ${episode.index} / ${episodes.size}"
+
+        val picker =
+            bottomControls.findViewWithTag<Button>(
+                "episode_picker"
+            )
+
+        picker?.text =
             "EP.${episode.index} / EP.${episodes.size}"
 
-        loadingText.visibility = View.VISIBLE
-        loadingText.text = "Memuat..."
+        loadingText.visibility =
+            View.VISIBLE
 
-        player.setMediaItem(MediaItem.fromUri(episode.url))
+        loadingText.text =
+            "Memuat..."
+
+        player.setMediaItem(
+            MediaItem.fromUri(
+                episode.url
+            )
+        )
+
         player.prepare()
-        player.playWhenReady = true
 
-        getSharedPreferences("player", MODE_PRIVATE)
+        player.playWhenReady =
+            true
+
+        getSharedPreferences(
+            "player",
+            MODE_PRIVATE
+        )
             .edit()
-            .putInt("episode_$bookId", position)
+            .putInt(
+                "episode_$bookId",
+                position
+            )
             .apply()
     }
 
+
     private fun nextEpisode() {
-        if (episodes.isEmpty()) return
-        val next = currentPosition + 1
-        if (next <= episodes.lastIndex) playEpisode(next)
+
+        val next =
+            currentPosition + 1
+
+        if (
+            next <= episodes.lastIndex
+        ) {
+            playEpisode(next)
+        }
     }
+
 
     private fun previousEpisode() {
-        if (episodes.isEmpty()) return
-        val previous = currentPosition - 1
-        if (previous >= 0) playEpisode(previous)
+
+        val previous =
+            currentPosition - 1
+
+        if (previous >= 0) {
+            playEpisode(previous)
+        }
     }
+
 
     private fun togglePlayPause() {
-        if (!::player.isInitialized) return
-        if (player.isPlaying) player.pause() else player.play()
+
+        if (player.isPlaying) {
+            player.pause()
+        } else {
+            player.play()
+        }
     }
+
 
     private fun showControlsTemporarily() {
-        handler.removeCallbacks(hideControlsRunnable)
+
+        handler.removeCallbacks(
+            hideControlsRunnable
+        )
+
         setControlsVisible(true)
-        if (::player.isInitialized && player.isPlaying) {
-            handler.postDelayed(hideControlsRunnable, 2400)
-        }
+
+        handler.postDelayed(
+            hideControlsRunnable,
+            2600
+        )
     }
 
-    private fun setControlsVisible(visible: Boolean) {
-        if (!::topControls.isInitialized || !::bottomControls.isInitialized) return
-        val alpha = if (visible) 1f else 0f
-        topControls.animate().alpha(alpha).setDuration(160).start()
-        bottomControls.animate().alpha(alpha).setDuration(160).start()
-        topControls.isClickable = visible
-        bottomControls.isClickable = visible
+
+    private fun setControlsVisible(
+        visible: Boolean
+    ) {
+
+        val value =
+            if (visible) {
+                View.VISIBLE
+            } else {
+                View.GONE
+            }
+
+        topControls.visibility =
+            value
+
+        bottomControls.visibility =
+            value
     }
+
 
     private fun showEpisodePicker() {
-        if (episodes.isEmpty() || isFinishing || isDestroyed) return
 
-        val dialog = Dialog(this)
-        val outer = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(14), dp(12), dp(14), dp(16))
-            background = rounded(Color.rgb(18, 21, 28), 24f)
-        }
+        if (episodes.isEmpty()) return
 
-        val header = TextView(this).apply {
-            text = "Pilih Episode"
-            textSize = 18f
-            setTextColor(Color.WHITE)
-            setTypeface(null, Typeface.BOLD)
-            setPadding(dp(6), dp(4), dp(6), dp(12))
-        }
+        val dialog =
+            Dialog(this)
+
+        val outer =
+            LinearLayout(this).apply {
+
+                orientation =
+                    LinearLayout.VERTICAL
+
+                setPadding(
+                    dp(12),
+                    dp(12),
+                    dp(12),
+                    dp(16)
+                )
+
+                setBackgroundColor(
+                    Color.rgb(
+                        24,
+                        24,
+                        24
+                    )
+                )
+            }
+
+        val header =
+            TextView(this).apply {
+
+                text =
+                    "Pilih Episode"
+
+                textSize =
+                    20f
+
+                setTextColor(
+                    Color.WHITE
+                )
+
+                setTypeface(
+                    null,
+                    Typeface.BOLD
+                )
+
+                setPadding(
+                    dp(5),
+                    dp(4),
+                    dp(5),
+                    dp(12)
+                )
+            }
+
         outer.addView(header)
 
-        val scroll = ScrollView(this)
-        val grid = GridLayout(this).apply { columnCount = 4 }
+        val scroll =
+            ScrollView(this)
 
-        episodes.forEachIndexed { position, episode ->
-            val button = compactButton("EP ${episode.index}") {
-                dialog.dismiss()
-                playEpisode(position)
-                showControlsTemporarily()
-            }.apply { alpha = if (position == currentPosition) 1f else 0.72f }
+        val grid =
+            GridLayout(this).apply {
+                columnCount = 4
+            }
 
-            grid.addView(button, GridLayout.LayoutParams().apply {
-                width = 0
-                height = dp(50)
-                columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f)
-                setMargins(dp(3), dp(3), dp(3), dp(3))
-            })
+        episodes.forEachIndexed {
+                position,
+                episode ->
+
+            val button =
+                Button(this).apply {
+
+                    text =
+                        "EP ${episode.index}"
+
+                    alpha =
+                        if (
+                            position ==
+                            currentPosition
+                        ) 1f else 0.72f
+
+                    setOnClickListener {
+                        dialog.dismiss()
+                        playEpisode(position)
+                        showControlsTemporarily()
+                    }
+                }
+
+            val params =
+                GridLayout.LayoutParams().apply {
+
+                    width = 0
+                    height = dp(52)
+
+                    columnSpec =
+                        GridLayout.spec(
+                            GridLayout.UNDEFINED,
+                            1f
+                        )
+
+                    setMargins(
+                        dp(2),
+                        dp(2),
+                        dp(2),
+                        dp(2)
+                    )
+                }
+
+            grid.addView(
+                button,
+                params
+            )
         }
 
         scroll.addView(grid)
+
         outer.addView(
             scroll,
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                0,
+                1f
+            )
         )
 
         dialog.setContentView(outer)
         dialog.show()
-        dialog.window?.apply {
-            setBackgroundDrawableResource(android.R.color.transparent)
-            setLayout(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                (resources.displayMetrics.heightPixels * 0.72f).toInt()
+
+        dialog.window?.setLayout(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            (
+                resources.displayMetrics.heightPixels *
+                0.72f
+            ).toInt()
+        )
+    }
+
+
+    private fun selectVideoUrl(
+        item: JSONObject
+    ): String {
+
+        var result =
+            item.optString(
+                "sourceVideoUrl"
             )
-        }
-    }
-
-    private fun compactButton(label: String, action: () -> Unit): TextView {
-        return TextView(this).apply {
-            text = label
-            gravity = Gravity.CENTER
-            textSize = 14f
-            setTextColor(Color.WHITE)
-            background = rounded(Color.argb(205, 25, 29, 37), 16f)
-            setPadding(dp(10), 0, dp(10), 0)
-            setOnClickListener { action() }
-        }
-    }
-
-    private fun selectVideoUrl(item: JSONObject): String {
-        var result = item.optString("sourceVideoUrl")
 
         if (result.isBlank()) {
-            val streams = item.optJSONArray("streams")
-            if (streams != null && streams.length() > 0) {
-                result = streams.optJSONObject(0)?.optString("sourceUrl").orEmpty()
+
+            val streams =
+                item.optJSONArray(
+                    "streams"
+                )
+
+            if (
+                streams != null &&
+                streams.length() > 0
+            ) {
+                result =
+                    streams.optJSONObject(0)
+                        ?.optString(
+                            "sourceUrl"
+                        )
+                        .orEmpty()
             }
         }
 
-        if (result.isBlank()) result = item.optString("videoUrl")
-        if (result.startsWith("http://")) {
-            result = "https://" + result.removePrefix("http://")
+        if (result.isBlank()) {
+            result =
+                item.optString(
+                    "videoUrl"
+                )
         }
+
+        if (
+            result.startsWith(
+                "http://"
+            )
+        ) {
+            result =
+                "https://" +
+                result.removePrefix(
+                    "http://"
+                )
+        }
+
         return result
     }
 
-    private fun httpGet(address: String): String {
-        val connection = URL(address).openConnection() as HttpURLConnection
-        connection.requestMethod = "GET"
-        connection.connectTimeout = 15000
-        connection.readTimeout = 30000
-        connection.setRequestProperty("Accept", "application/json")
-        connection.setRequestProperty("User-Agent", "ReelShortFloating/4.2 Android")
+
+    private fun httpGet(
+        address: String
+    ): String {
+
+        val connection =
+            URL(address)
+                .openConnection()
+                as HttpURLConnection
+
+        connection.requestMethod =
+            "GET"
+
+        connection.connectTimeout =
+            15000
+
+        connection.readTimeout =
+            30000
+
+        connection.setRequestProperty(
+            "Accept",
+            "application/json"
+        )
+
+        connection.setRequestProperty(
+            "User-Agent",
+            "ReelShortFloating/4.0 Android"
+        )
 
         try {
-            val code = connection.responseCode
-            val stream = if (code in 200..299) connection.inputStream else connection.errorStream
-            val body = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
-            if (code !in 200..299) throw Exception("HTTP $code")
+
+            val code =
+                connection.responseCode
+
+            val stream =
+                if (
+                    code in 200..299
+                ) {
+                    connection.inputStream
+                } else {
+                    connection.errorStream
+                }
+
+            val body =
+                stream
+                    ?.bufferedReader()
+                    ?.use {
+                        it.readText()
+                    }
+                    ?: ""
+
+            if (
+                code !in 200..299
+            ) {
+                throw Exception(
+                    "HTTP $code"
+                )
+            }
+
             return body
+
         } finally {
             connection.disconnect()
         }
     }
 
-    private fun rounded(color: Int, radiusDp: Float): GradientDrawable {
-        return GradientDrawable().apply {
-            setColor(color)
-            cornerRadius = dp(radiusDp).toFloat()
-            setStroke(dp(1), Color.argb(25, 255, 255, 255))
-        }
-    }
 
-    private fun dp(value: Int): Int =
-        (value * resources.displayMetrics.density).toInt()
+    private fun dp(
+        value: Int
+    ): Int =
+        (
+            value *
+            resources.displayMetrics.density
+        ).toInt()
 
-    private fun dp(value: Float): Int =
-        (value * resources.displayMetrics.density).toInt()
-
-    override fun onPause() {
-        super.onPause()
-        if (::player.isInitialized) player.pause()
-    }
 
     override fun onDestroy() {
-        handler.removeCallbacksAndMessages(null)
-        if (::playerView.isInitialized) playerView.player = null
-        if (::player.isInitialized) player.release()
+
+        handler.removeCallbacksAndMessages(
+            null
+        )
+
+        playerView.player =
+            null
+
+        player.release()
+
         super.onDestroy()
     }
 }

@@ -40,11 +40,44 @@
 
     <div class="home-content">
 
-      <div id="searchStatus" class="search-status">
-        Cari drama yang mau ditonton.
-      </div>
+      <section class="home-section">
+        <div class="section-heading">
+          <div>
+            <span class="section-kicker">REKOMENDASI</span>
+            <h2>Untuk Kamu</h2>
+          </div>
 
-      <div id="searchResults" class="movie-grid"></div>
+          <button
+            id="refreshForYouButton"
+            class="refresh-button"
+            type="button"
+            aria-label="Muat ulang rekomendasi"
+          >
+            ↻
+          </button>
+        </div>
+
+        <div id="forYouStatus" class="search-status">
+          Memuat rekomendasi...
+        </div>
+
+        <div id="forYouResults" class="movie-grid"></div>
+      </section>
+
+      <section id="searchSection" class="home-section search-section">
+        <div class="section-heading">
+          <div>
+            <span class="section-kicker">PENCARIAN</span>
+            <h2>Hasil Pencarian</h2>
+          </div>
+        </div>
+
+        <div id="searchStatus" class="search-status">
+          Ketik judul drama di atas.
+        </div>
+
+        <div id="searchResults" class="movie-grid"></div>
+      </section>
 
     </div>
 
@@ -280,7 +313,7 @@
 
 
   <!-- =========================
-       MODE PICKER
+       DETAILS + MODE PICKER
   ========================== -->
 
   <div
@@ -295,45 +328,64 @@
   >
     <div class="mode-handle"></div>
 
-    <div class="mode-header">
-      <div>
-        <h2>Pilih mode nonton</h2>
-        <p id="modeBookTitle">Drama</p>
-      </div>
-
-      <button
-        id="closeModeButton"
-        class="mode-close"
-        type="button"
-        aria-label="Tutup"
+    <div class="detail-hero">
+      <img
+        id="modeBookCover"
+        class="detail-cover"
+        alt="Cover"
       >
-        ✕
-      </button>
+
+      <div class="detail-main">
+        <div class="mode-header">
+          <div class="detail-title-wrap">
+            <span class="section-kicker">PILIH MODE NONTON</span>
+            <h2 id="modeBookTitle">Drama</h2>
+          </div>
+
+          <button
+            id="closeModeButton"
+            class="mode-close"
+            type="button"
+            aria-label="Tutup"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div id="modeBookMeta" class="detail-meta">Memuat detail...</div>
+        <div id="modeBookThemes" class="detail-chips"></div>
+      </div>
     </div>
 
-    <button
-      id="shortsModeButton"
-      class="mode-option"
-      type="button"
-    >
-      <span class="mode-icon">▯</span>
-      <span>
-        <strong>YouTube Shorts</strong>
-        <small>Fullscreen, swipe atas/bawah buat pindah episode.</small>
-      </span>
-    </button>
+    <p id="modeBookDesc" class="detail-desc">
+      Memuat deskripsi...
+    </p>
 
-    <button
-      id="floatingModeButton"
-      class="mode-option"
-      type="button"
-    >
-      <span class="mode-icon">◫</span>
-      <span>
-        <strong>Floating window</strong>
-        <small>Nonton sambil buka game, bisa drag, resize, dan minimize.</small>
-      </span>
-    </button>
+    <div class="mode-actions">
+      <button
+        id="shortsModeButton"
+        class="mode-option primary-mode"
+        type="button"
+      >
+        <span class="mode-icon">▯</span>
+        <span>
+          <strong>YouTube Shorts</strong>
+          <small>Fullscreen dan swipe episode.</small>
+        </span>
+      </button>
+
+      <button
+        id="floatingModeButton"
+        class="mode-option"
+        type="button"
+      >
+        <span class="mode-icon">◫</span>
+        <span>
+          <strong>Floating window</strong>
+          <small>Nonton sambil buka aplikasi lain.</small>
+        </span>
+      </button>
+    </div>
   </section>
 
   <script src="script.js"></script>

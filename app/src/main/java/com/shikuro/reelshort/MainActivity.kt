@@ -140,6 +140,56 @@ class MainActivity : Activity() {
         }
 
         @JavascriptInterface
+        fun getForYou(): String {
+            return try {
+                httpGet(
+                    "https://reelshort.vercel.app/api/foryou?lang=in"
+                )
+            } catch (
+                error: Exception
+            ) {
+                JSONObject()
+                    .put("ok", false)
+                    .put(
+                        "message",
+                        error.message ?: "For You gagal"
+                    )
+                    .put(
+                        "items",
+                        org.json.JSONArray()
+                    )
+                    .toString()
+            }
+        }
+
+        @JavascriptInterface
+        fun getDetails(
+            bookId: String
+        ): String {
+            return try {
+                val encoded =
+                    URLEncoder.encode(
+                        bookId,
+                        "UTF-8"
+                    )
+
+                httpGet(
+                    "https://reelshort.vercel.app/api/details?lang=in&bookId=$encoded"
+                )
+            } catch (
+                error: Exception
+            ) {
+                JSONObject()
+                    .put("ok", false)
+                    .put(
+                        "message",
+                        error.message ?: "Detail gagal"
+                    )
+                    .toString()
+            }
+        }
+
+        @JavascriptInterface
         fun startShorts(
             bookId: String,
             title: String

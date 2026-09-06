@@ -68,8 +68,8 @@ android {
         minSdk = 26
         targetSdk = 35
 
-        versionCode = 5
-        versionName = "4.2"
+        versionCode = 4
+        versionName = "4.0"
     }
 
     compileOptions {
@@ -326,6 +326,56 @@ class MainActivity : Activity() {
         }
 
         @JavascriptInterface
+        fun getForYou(): String {
+            return try {
+                httpGet(
+                    "https://reelshort.vercel.app/api/foryou?lang=in"
+                )
+            } catch (
+                error: Exception
+            ) {
+                JSONObject()
+                    .put("ok", false)
+                    .put(
+                        "message",
+                        error.message ?: "For You gagal"
+                    )
+                    .put(
+                        "items",
+                        org.json.JSONArray()
+                    )
+                    .toString()
+            }
+        }
+
+        @JavascriptInterface
+        fun getDetails(
+            bookId: String
+        ): String {
+            return try {
+                val encoded =
+                    URLEncoder.encode(
+                        bookId,
+                        "UTF-8"
+                    )
+
+                httpGet(
+                    "https://reelshort.vercel.app/api/details?lang=in&bookId=$encoded"
+                )
+            } catch (
+                error: Exception
+            ) {
+                JSONObject()
+                    .put("ok", false)
+                    .put(
+                        "message",
+                        error.message ?: "Detail gagal"
+                    )
+                    .toString()
+            }
+        }
+
+        @JavascriptInterface
         fun startShorts(
             bookId: String,
             title: String
@@ -511,7 +561,6 @@ import android.app.Activity
 import android.app.Dialog
 import android.graphics.Color
 import android.graphics.Typeface
-import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -519,6 +568,7 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.GridLayout
 import android.widget.LinearLayout
@@ -534,14 +584,15 @@ import androidx.media3.ui.PlayerView
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
-import kotlin.math.abs
 
 class ShortsActivity : Activity() {
 
     companion object {
         const val EXTRA_BOOK_ID = "book_id"
         const val EXTRA_BOOK_TITLE = "book_title"
-        private const val API = "https://reelshort.vercel.app"
+
+        private const val API =
+            "https://reelshort.vercel.app"
     }
 
     data class Episode(
@@ -550,71 +601,140 @@ class ShortsActivity : Activity() {
     )
 
     private lateinit var root: FrameLayout
-    private lateinit var player: ExoPlayer
     private lateinit var playerView: PlayerView
+    private lateinit var player: ExoPlayer
+
     private lateinit var topControls: LinearLayout
     private lateinit var bottomControls: LinearLayout
+
     private lateinit var titleText: TextView
     private lateinit var episodeText: TextView
     private lateinit var loadingText: TextView
-    private lateinit var centerPlay: TextView
 
-    private val episodes = mutableListOf<Episode>()
+    private val episodes =
+        mutableListOf<Episode>()
+
     private var currentPosition = 0
+
     private var bookId = ""
     private var bookTitle = ""
 
-    private var touchStartX = 0f
     private var touchStartY = 0f
+    private var touchStartX = 0f
     private var touchStartedAt = 0L
 
-    private val handler = Handler(Looper.getMainLooper())
-    private val hideControlsRunnable = Runnable { setControlsVisible(false) }
+    private val handler =
+        Handler(Looper.getMainLooper())
 
-    override fun onCreate(savedInstanceState: Bundle?) {
+    private val hideControlsRunnable =
+        Runnable {
+            setControlsVisible(false)
+        }
+
+
+    override fun onCreate(
+        savedInstanceState: Bundle?
+    ) {
         super.onCreate(savedInstanceState)
 
-        try {
-            bookId = intent.getStringExtra(EXTRA_BOOK_ID).orEmpty()
-            bookTitle = intent.getStringExtra(EXTRA_BOOK_TITLE).orEmpty()
+        bookId =
+            intent.getStringExtra(
+                EXTRA_BOOK_ID
+            )
+                .orEmpty()
 
-            if (bookId.isBlank()) {
-                finish()
-                return
-            }
+        bookTitle =
+            intent.getStringExtra(
+                EXTRA_BOOK_TITLE
+            )
+                .orEmpty()
 
-            window.statusBarColor = Color.BLACK
-            window.navigationBarColor = Color.BLACK
-
-            // Init player BEFORE building UI. This avoids lateinit ordering crashes.
-            player = ExoPlayer.Builder(this).build()
-            buildUi()
-            installPlayerListener()
-            loadEpisodes()
-
-        } catch (error: Throwable) {
-            error.printStackTrace()
-            Toast.makeText(
-                this,
-                "Shorts gagal dibuka: ${error.javaClass.simpleName}",
-                Toast.LENGTH_LONG
-            ).show()
+        if (bookId.isBlank()) {
             finish()
+            return
         }
+
+        window.statusBarColor =
+            Color.BLACK
+
+        window.navigationBarColor =
+            Color.BLACK
+
+        buildUi()
+
+        player =
+            ExoPlayer.Builder(this)
+                .build()
+
+        playerView.player =
+            player
+
+        player.addListener(
+            object : Player.Listener {
+
+                override fun onPlaybackStateChanged(
+                    state: Int
+                ) {
+                    when (state) {
+
+                        Player.STATE_BUFFERING -> {
+                            loadingText.visibility =
+                                View.VISIBLE
+
+                            loadingText.text =
+                                "Memuat..."
+                        }
+
+                        Player.STATE_READY -> {
+                            loadingText.visibility =
+                                View.GONE
+                        }
+
+                        Player.STATE_ENDED -> {
+                            nextEpisode()
+                        }
+                    }
+                }
+
+                override fun onPlayerError(
+                    error: PlaybackException
+                ) {
+                    loadingText.visibility =
+                        View.VISIBLE
+
+                    loadingText.text =
+                        "Video gagal diputar"
+                }
+            }
+        )
+
+        loadEpisodes()
     }
 
+
     private fun buildUi() {
-        root = FrameLayout(this).apply {
-            setBackgroundColor(Color.BLACK)
-        }
+
+        root =
+            FrameLayout(this).apply {
+                setBackgroundColor(
+                    Color.BLACK
+                )
+            }
+
         setContentView(root)
 
-        playerView = PlayerView(this).apply {
-            player = this@ShortsActivity.player
-            useController = false
-            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-            setBackgroundColor(Color.BLACK)
-        }
+
+        playerView =
+            PlayerView(this).apply {
+                useController = false
+
+                resizeMode =
+                    AspectRatioFrameLayout.RESIZE_MODE_FIT
+
+                setBackgroundColor(
+                    Color.BLACK
+                )
+            }
 
         root.addView(
             playerView,
@@ -624,13 +744,32 @@ class ShortsActivity : Activity() {
             )
         )
 
-        loadingText = TextView(this).apply {
-            text = "Memuat episode..."
-            gravity = Gravity.CENTER
-            textSize = 13f
-            setTextColor(Color.WHITE)
-            setBackgroundColor(Color.argb(55, 0, 0, 0))
-        }
+
+        loadingText =
+            TextView(this).apply {
+                text =
+                    "Memuat episode..."
+
+                gravity =
+                    Gravity.CENTER
+
+                textSize =
+                    14f
+
+                setTextColor(
+                    Color.argb(235, 255, 255, 255)
+                )
+
+                setBackgroundColor(
+                    Color.argb(
+                        70,
+                        0,
+                        0,
+                        0
+                    )
+                )
+            }
+
         root.addView(
             loadingText,
             FrameLayout.LayoutParams(
@@ -639,64 +778,112 @@ class ShortsActivity : Activity() {
             )
         )
 
-        centerPlay = TextView(this).apply {
-            text = "▶"
-            textSize = 26f
-            gravity = Gravity.CENTER
-            setTextColor(Color.WHITE)
-            visibility = View.GONE
-            background = rounded(Color.argb(190, 20, 23, 30), 999f)
-            setOnClickListener {
-                togglePlayPause()
-                showControlsTemporarily()
+
+        topControls =
+            LinearLayout(this).apply {
+
+                orientation =
+                    LinearLayout.HORIZONTAL
+
+                gravity =
+                    Gravity.CENTER_VERTICAL
+
+                setPadding(
+                    dp(12),
+                    dp(10),
+                    dp(12),
+                    dp(10)
+                )
+
+                setBackgroundColor(
+                    Color.argb(
+                        130,
+                        0,
+                        0,
+                        0
+                    )
+                )
             }
-        }
-        root.addView(
-            centerPlay,
-            FrameLayout.LayoutParams(dp(68), dp(68), Gravity.CENTER)
+
+        val back =
+            Button(this).apply {
+                text = "←"
+
+                setOnClickListener {
+                    finish()
+                }
+            }
+
+        topControls.addView(
+            back,
+            LinearLayout.LayoutParams(
+                dp(52),
+                dp(46)
+            )
         )
 
-        topControls = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(12), dp(12), dp(12), dp(8))
-            setBackgroundColor(Color.argb(90, 0, 0, 0))
-        }
+        val titleBox =
+            LinearLayout(this).apply {
+                orientation =
+                    LinearLayout.VERTICAL
 
-        val back = TextView(this).apply {
-            text = "‹"
-            textSize = 34f
-            gravity = Gravity.CENTER
-            setTextColor(Color.WHITE)
-            background = rounded(Color.argb(120, 24, 27, 34), 999f)
-            setOnClickListener { finish() }
-        }
-        topControls.addView(back, LinearLayout.LayoutParams(dp(44), dp(44)))
+                setPadding(
+                    dp(10),
+                    0,
+                    0,
+                    0
+                )
+            }
 
-        val titleBox = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(12), 0, 0, 0)
-        }
+        titleText =
+            TextView(this).apply {
+                text =
+                    bookTitle
 
-        titleText = TextView(this).apply {
-            text = bookTitle
-            textSize = 14f
-            maxLines = 1
-            setTextColor(Color.WHITE)
-            setTypeface(null, Typeface.BOLD)
-        }
+                textSize =
+                    14f
 
-        episodeText = TextView(this).apply {
-            text = "Episode"
-            textSize = 11f
-            setTextColor(Color.argb(190, 255, 255, 255))
-        }
+                maxLines =
+                    1
 
-        titleBox.addView(titleText)
-        titleBox.addView(episodeText)
+                setTextColor(
+                    Color.WHITE
+                )
+
+                setTypeface(
+                    null,
+                    Typeface.BOLD
+                )
+            }
+
+        episodeText =
+            TextView(this).apply {
+                text =
+                    "Episode"
+
+                textSize =
+                    12f
+
+                setTextColor(
+                    Color.LTGRAY
+                )
+            }
+
+        titleBox.addView(
+            titleText
+        )
+
+        titleBox.addView(
+            episodeText
+        )
+
         topControls.addView(
             titleBox,
-            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            LinearLayout.LayoutParams(
+                0,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                1f
+            )
         )
 
         root.addView(
@@ -708,33 +895,91 @@ class ShortsActivity : Activity() {
             )
         )
 
-        bottomControls = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(14), dp(10), dp(14), dp(18))
-            setBackgroundColor(Color.argb(100, 0, 0, 0))
-        }
 
-        val previous = compactButton("‹") {
-            previousEpisode()
-            showControlsTemporarily()
-        }
+        bottomControls =
+            LinearLayout(this).apply {
 
-        val picker = compactButton("Episode") {
-            showEpisodePicker()
-            showControlsTemporarily()
-        }.apply { tag = "episode_picker" }
+                orientation =
+                    LinearLayout.HORIZONTAL
 
-        val next = compactButton("›") {
-            nextEpisode()
-            showControlsTemporarily()
-        }
+                gravity =
+                    Gravity.CENTER
 
-        bottomControls.addView(previous, LinearLayout.LayoutParams(dp(48), dp(44)))
-        bottomControls.addView(picker, LinearLayout.LayoutParams(0, dp(44), 1f).apply {
-            setMargins(dp(8), 0, dp(8), 0)
-        })
-        bottomControls.addView(next, LinearLayout.LayoutParams(dp(48), dp(44)))
+                setPadding(
+                    dp(16),
+                    dp(10),
+                    dp(16),
+                    dp(18)
+                )
+
+                setBackgroundColor(
+                    Color.argb(
+                        145,
+                        0,
+                        0,
+                        0
+                    )
+                )
+            }
+
+        val previous =
+            Button(this).apply {
+                text = "‹"
+
+                setOnClickListener {
+                    previousEpisode()
+                    showControlsTemporarily()
+                }
+            }
+
+        val episodePicker =
+            Button(this).apply {
+                text =
+                    "Episode"
+
+                setOnClickListener {
+                    showEpisodePicker()
+                    showControlsTemporarily()
+                }
+            }
+
+        val next =
+            Button(this).apply {
+                text = "›"
+
+                setOnClickListener {
+                    nextEpisode()
+                    showControlsTemporarily()
+                }
+            }
+
+        bottomControls.addView(
+            previous,
+            LinearLayout.LayoutParams(
+                dp(58),
+                dp(48)
+            )
+        )
+
+        bottomControls.addView(
+            episodePicker,
+            LinearLayout.LayoutParams(
+                0,
+                dp(48),
+                1f
+            )
+        )
+
+        bottomControls.addView(
+            next,
+            LinearLayout.LayoutParams(
+                dp(58),
+                dp(48)
+            )
+        )
+
+        episodePicker.tag =
+            "episode_picker"
 
         root.addView(
             bottomControls,
@@ -745,296 +990,601 @@ class ShortsActivity : Activity() {
             )
         )
 
-        playerView.setOnTouchListener { _, event ->
-            when (event.actionMasked) {
+
+        playerView.setOnTouchListener {
+                _,
+                event ->
+
+            when (event.action) {
+
                 MotionEvent.ACTION_DOWN -> {
-                    touchStartX = event.rawX
-                    touchStartY = event.rawY
-                    touchStartedAt = System.currentTimeMillis()
+
+                    touchStartX =
+                        event.rawX
+
+                    touchStartY =
+                        event.rawY
+
+                    touchStartedAt =
+                        System.currentTimeMillis()
+
                     true
                 }
 
                 MotionEvent.ACTION_UP -> {
-                    val dx = event.rawX - touchStartX
-                    val dy = event.rawY - touchStartY
-                    val elapsed = System.currentTimeMillis() - touchStartedAt
-                    val vertical = abs(dy) > abs(dx)
 
-                    when {
-                        elapsed < 900 && vertical && dy < -dp(72) -> nextEpisode()
-                        elapsed < 900 && vertical && dy > dp(72) -> previousEpisode()
-                        abs(dx) < dp(18) && abs(dy) < dp(18) -> togglePlayPause()
+                    val dx =
+                        event.rawX -
+                        touchStartX
+
+                    val dy =
+                        event.rawY -
+                        touchStartY
+
+                    val elapsed =
+                        System.currentTimeMillis() -
+                        touchStartedAt
+
+                    val vertical =
+                        kotlin.math.abs(dy) >
+                        kotlin.math.abs(dx)
+
+                    if (
+                        elapsed < 900 &&
+                        vertical &&
+                        dy < -dp(70)
+                    ) {
+                        nextEpisode()
+                        showControlsTemporarily()
+                        true
+                    } else if (
+                        elapsed < 900 &&
+                        vertical &&
+                        dy > dp(70)
+                    ) {
+                        previousEpisode()
+                        showControlsTemporarily()
+                        true
+                    } else {
+                        togglePlayPause()
+                        showControlsTemporarily()
+                        true
                     }
-
-                    showControlsTemporarily()
-                    true
                 }
 
-                MotionEvent.ACTION_CANCEL -> true
                 else -> true
             }
         }
     }
 
-    private fun installPlayerListener() {
-        player.addListener(
-            object : Player.Listener {
-                override fun onPlaybackStateChanged(state: Int) {
-                    when (state) {
-                        Player.STATE_BUFFERING -> {
-                            loadingText.visibility = View.VISIBLE
-                            loadingText.text = "Memuat..."
-                        }
-                        Player.STATE_READY -> {
-                            loadingText.visibility = View.GONE
-                        }
-                        Player.STATE_ENDED -> nextEpisode()
-                    }
-                }
-
-                override fun onIsPlayingChanged(isPlaying: Boolean) {
-                    centerPlay.visibility = if (isPlaying) View.GONE else View.VISIBLE
-                    if (isPlaying) showControlsTemporarily() else setControlsVisible(true)
-                }
-
-                override fun onPlayerError(error: PlaybackException) {
-                    loadingText.visibility = View.VISIBLE
-                    loadingText.text = "Video gagal diputar"
-                }
-            }
-        )
-    }
 
     private fun loadEpisodes() {
+
         Thread {
+
             try {
-                val body = httpGet(
-                    "$API/api/stream/all-episode?lang=in&bookId=$bookId"
-                )
-                val json = JSONObject(body)
-                if (!json.optBoolean("ok")) throw Exception("API episode gagal")
 
-                val array = json.getJSONArray("episodes")
-                val loaded = mutableListOf<Episode>()
+                val body =
+                    httpGet(
+                        "$API/api/stream/all-episode?lang=in&bookId=$bookId"
+                    )
 
-                for (i in 0 until array.length()) {
-                    val item = array.getJSONObject(i)
-                    val url = selectVideoUrl(item)
+                val json =
+                    JSONObject(body)
+
+                if (
+                    !json.optBoolean("ok")
+                ) {
+                    throw Exception(
+                        "API episode gagal"
+                    )
+                }
+
+                val array =
+                    json.getJSONArray(
+                        "episodes"
+                    )
+
+                val loaded =
+                    mutableListOf<Episode>()
+
+                for (
+                    i in 0 until array.length()
+                ) {
+
+                    val item =
+                        array.getJSONObject(i)
+
+                    val url =
+                        selectVideoUrl(item)
+
                     if (url.isNotBlank()) {
-                        loaded.add(Episode(item.optInt("index", i + 1), url))
+                        loaded.add(
+                            Episode(
+                                index =
+                                    item.optInt(
+                                        "index",
+                                        i + 1
+                                    ),
+                                url = url
+                            )
+                        )
                     }
                 }
 
-                if (loaded.isEmpty()) throw Exception("Tidak ada stream")
-                val realTitle = json.optString("title", bookTitle)
+                if (loaded.isEmpty()) {
+                    throw Exception(
+                        "Tidak ada stream"
+                    )
+                }
+
+                val realTitle =
+                    json.optString(
+                        "title",
+                        bookTitle
+                    )
 
                 runOnUiThread {
-                    if (isFinishing || isDestroyed) return@runOnUiThread
-                    episodes.clear()
-                    episodes.addAll(loaded)
-                    bookTitle = realTitle
-                    titleText.text = realTitle
 
-                    val saved = getSharedPreferences("player", MODE_PRIVATE)
-                        .getInt("episode_$bookId", 0)
-                    currentPosition = saved.coerceIn(0, episodes.lastIndex)
-                    playEpisode(currentPosition)
+                    episodes.clear()
+
+                    episodes.addAll(
+                        loaded
+                    )
+
+                    bookTitle =
+                        realTitle
+
+                    titleText.text =
+                        realTitle
+
+                    val saved =
+                        getSharedPreferences(
+                            "player",
+                            MODE_PRIVATE
+                        )
+                            .getInt(
+                                "episode_$bookId",
+                                0
+                            )
+
+                    currentPosition =
+                        saved.coerceIn(
+                            0,
+                            episodes.lastIndex
+                        )
+
+                    playEpisode(
+                        currentPosition
+                    )
+
                     showControlsTemporarily()
                 }
-            } catch (error: Exception) {
+
+            } catch (
+                error: Exception
+            ) {
+
                 error.printStackTrace()
+
                 runOnUiThread {
-                    if (isFinishing || isDestroyed) return@runOnUiThread
-                    loadingText.visibility = View.VISIBLE
+                    loadingText.visibility =
+                        View.VISIBLE
+
                     loadingText.text =
                         "Gagal memuat episode: ${error.message.orEmpty()}"
+
+                    Toast.makeText(
+                        this,
+                        error.message ?: "Gagal",
+                        Toast.LENGTH_LONG
+                    ).show()
                 }
             }
+
         }.start()
     }
 
-    private fun playEpisode(position: Int) {
-        if (position !in episodes.indices || isFinishing || isDestroyed) return
 
-        currentPosition = position
-        val episode = episodes[position]
-        episodeText.text = "Episode ${episode.index} / ${episodes.size}"
+    private fun playEpisode(
+        position: Int
+    ) {
 
-        bottomControls.findViewWithTag<TextView>("episode_picker")?.text =
+        if (
+            position !in episodes.indices
+        ) return
+
+        currentPosition =
+            position
+
+        val episode =
+            episodes[position]
+
+        episodeText.text =
+            "Episode ${episode.index} / ${episodes.size}"
+
+        val picker =
+            bottomControls.findViewWithTag<Button>(
+                "episode_picker"
+            )
+
+        picker?.text =
             "EP.${episode.index} / EP.${episodes.size}"
 
-        loadingText.visibility = View.VISIBLE
-        loadingText.text = "Memuat..."
+        loadingText.visibility =
+            View.VISIBLE
 
-        player.setMediaItem(MediaItem.fromUri(episode.url))
+        loadingText.text =
+            "Memuat..."
+
+        player.setMediaItem(
+            MediaItem.fromUri(
+                episode.url
+            )
+        )
+
         player.prepare()
-        player.playWhenReady = true
 
-        getSharedPreferences("player", MODE_PRIVATE)
+        player.playWhenReady =
+            true
+
+        getSharedPreferences(
+            "player",
+            MODE_PRIVATE
+        )
             .edit()
-            .putInt("episode_$bookId", position)
+            .putInt(
+                "episode_$bookId",
+                position
+            )
             .apply()
     }
 
+
     private fun nextEpisode() {
-        if (episodes.isEmpty()) return
-        val next = currentPosition + 1
-        if (next <= episodes.lastIndex) playEpisode(next)
+
+        val next =
+            currentPosition + 1
+
+        if (
+            next <= episodes.lastIndex
+        ) {
+            playEpisode(next)
+        }
     }
+
 
     private fun previousEpisode() {
-        if (episodes.isEmpty()) return
-        val previous = currentPosition - 1
-        if (previous >= 0) playEpisode(previous)
+
+        val previous =
+            currentPosition - 1
+
+        if (previous >= 0) {
+            playEpisode(previous)
+        }
     }
+
 
     private fun togglePlayPause() {
-        if (!::player.isInitialized) return
-        if (player.isPlaying) player.pause() else player.play()
+
+        if (player.isPlaying) {
+            player.pause()
+        } else {
+            player.play()
+        }
     }
+
 
     private fun showControlsTemporarily() {
-        handler.removeCallbacks(hideControlsRunnable)
+
+        handler.removeCallbacks(
+            hideControlsRunnable
+        )
+
         setControlsVisible(true)
-        if (::player.isInitialized && player.isPlaying) {
-            handler.postDelayed(hideControlsRunnable, 2400)
-        }
+
+        handler.postDelayed(
+            hideControlsRunnable,
+            2600
+        )
     }
 
-    private fun setControlsVisible(visible: Boolean) {
-        if (!::topControls.isInitialized || !::bottomControls.isInitialized) return
-        val alpha = if (visible) 1f else 0f
-        topControls.animate().alpha(alpha).setDuration(160).start()
-        bottomControls.animate().alpha(alpha).setDuration(160).start()
-        topControls.isClickable = visible
-        bottomControls.isClickable = visible
+
+    private fun setControlsVisible(
+        visible: Boolean
+    ) {
+
+        val value =
+            if (visible) {
+                View.VISIBLE
+            } else {
+                View.GONE
+            }
+
+        topControls.visibility =
+            value
+
+        bottomControls.visibility =
+            value
     }
+
 
     private fun showEpisodePicker() {
-        if (episodes.isEmpty() || isFinishing || isDestroyed) return
 
-        val dialog = Dialog(this)
-        val outer = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(14), dp(12), dp(14), dp(16))
-            background = rounded(Color.rgb(18, 21, 28), 24f)
-        }
+        if (episodes.isEmpty()) return
 
-        val header = TextView(this).apply {
-            text = "Pilih Episode"
-            textSize = 18f
-            setTextColor(Color.WHITE)
-            setTypeface(null, Typeface.BOLD)
-            setPadding(dp(6), dp(4), dp(6), dp(12))
-        }
+        val dialog =
+            Dialog(this)
+
+        val outer =
+            LinearLayout(this).apply {
+
+                orientation =
+                    LinearLayout.VERTICAL
+
+                setPadding(
+                    dp(12),
+                    dp(12),
+                    dp(12),
+                    dp(16)
+                )
+
+                setBackgroundColor(
+                    Color.rgb(
+                        24,
+                        24,
+                        24
+                    )
+                )
+            }
+
+        val header =
+            TextView(this).apply {
+
+                text =
+                    "Pilih Episode"
+
+                textSize =
+                    20f
+
+                setTextColor(
+                    Color.WHITE
+                )
+
+                setTypeface(
+                    null,
+                    Typeface.BOLD
+                )
+
+                setPadding(
+                    dp(5),
+                    dp(4),
+                    dp(5),
+                    dp(12)
+                )
+            }
+
         outer.addView(header)
 
-        val scroll = ScrollView(this)
-        val grid = GridLayout(this).apply { columnCount = 4 }
+        val scroll =
+            ScrollView(this)
 
-        episodes.forEachIndexed { position, episode ->
-            val button = compactButton("EP ${episode.index}") {
-                dialog.dismiss()
-                playEpisode(position)
-                showControlsTemporarily()
-            }.apply { alpha = if (position == currentPosition) 1f else 0.72f }
+        val grid =
+            GridLayout(this).apply {
+                columnCount = 4
+            }
 
-            grid.addView(button, GridLayout.LayoutParams().apply {
-                width = 0
-                height = dp(50)
-                columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f)
-                setMargins(dp(3), dp(3), dp(3), dp(3))
-            })
+        episodes.forEachIndexed {
+                position,
+                episode ->
+
+            val button =
+                Button(this).apply {
+
+                    text =
+                        "EP ${episode.index}"
+
+                    alpha =
+                        if (
+                            position ==
+                            currentPosition
+                        ) 1f else 0.72f
+
+                    setOnClickListener {
+                        dialog.dismiss()
+                        playEpisode(position)
+                        showControlsTemporarily()
+                    }
+                }
+
+            val params =
+                GridLayout.LayoutParams().apply {
+
+                    width = 0
+                    height = dp(52)
+
+                    columnSpec =
+                        GridLayout.spec(
+                            GridLayout.UNDEFINED,
+                            1f
+                        )
+
+                    setMargins(
+                        dp(2),
+                        dp(2),
+                        dp(2),
+                        dp(2)
+                    )
+                }
+
+            grid.addView(
+                button,
+                params
+            )
         }
 
         scroll.addView(grid)
+
         outer.addView(
             scroll,
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                0,
+                1f
+            )
         )
 
         dialog.setContentView(outer)
         dialog.show()
-        dialog.window?.apply {
-            setBackgroundDrawableResource(android.R.color.transparent)
-            setLayout(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                (resources.displayMetrics.heightPixels * 0.72f).toInt()
+
+        dialog.window?.setLayout(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            (
+                resources.displayMetrics.heightPixels *
+                0.72f
+            ).toInt()
+        )
+    }
+
+
+    private fun selectVideoUrl(
+        item: JSONObject
+    ): String {
+
+        var result =
+            item.optString(
+                "sourceVideoUrl"
             )
-        }
-    }
-
-    private fun compactButton(label: String, action: () -> Unit): TextView {
-        return TextView(this).apply {
-            text = label
-            gravity = Gravity.CENTER
-            textSize = 14f
-            setTextColor(Color.WHITE)
-            background = rounded(Color.argb(205, 25, 29, 37), 16f)
-            setPadding(dp(10), 0, dp(10), 0)
-            setOnClickListener { action() }
-        }
-    }
-
-    private fun selectVideoUrl(item: JSONObject): String {
-        var result = item.optString("sourceVideoUrl")
 
         if (result.isBlank()) {
-            val streams = item.optJSONArray("streams")
-            if (streams != null && streams.length() > 0) {
-                result = streams.optJSONObject(0)?.optString("sourceUrl").orEmpty()
+
+            val streams =
+                item.optJSONArray(
+                    "streams"
+                )
+
+            if (
+                streams != null &&
+                streams.length() > 0
+            ) {
+                result =
+                    streams.optJSONObject(0)
+                        ?.optString(
+                            "sourceUrl"
+                        )
+                        .orEmpty()
             }
         }
 
-        if (result.isBlank()) result = item.optString("videoUrl")
-        if (result.startsWith("http://")) {
-            result = "https://" + result.removePrefix("http://")
+        if (result.isBlank()) {
+            result =
+                item.optString(
+                    "videoUrl"
+                )
         }
+
+        if (
+            result.startsWith(
+                "http://"
+            )
+        ) {
+            result =
+                "https://" +
+                result.removePrefix(
+                    "http://"
+                )
+        }
+
         return result
     }
 
-    private fun httpGet(address: String): String {
-        val connection = URL(address).openConnection() as HttpURLConnection
-        connection.requestMethod = "GET"
-        connection.connectTimeout = 15000
-        connection.readTimeout = 30000
-        connection.setRequestProperty("Accept", "application/json")
-        connection.setRequestProperty("User-Agent", "ReelShortFloating/4.2 Android")
+
+    private fun httpGet(
+        address: String
+    ): String {
+
+        val connection =
+            URL(address)
+                .openConnection()
+                as HttpURLConnection
+
+        connection.requestMethod =
+            "GET"
+
+        connection.connectTimeout =
+            15000
+
+        connection.readTimeout =
+            30000
+
+        connection.setRequestProperty(
+            "Accept",
+            "application/json"
+        )
+
+        connection.setRequestProperty(
+            "User-Agent",
+            "ReelShortFloating/4.0 Android"
+        )
 
         try {
-            val code = connection.responseCode
-            val stream = if (code in 200..299) connection.inputStream else connection.errorStream
-            val body = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
-            if (code !in 200..299) throw Exception("HTTP $code")
+
+            val code =
+                connection.responseCode
+
+            val stream =
+                if (
+                    code in 200..299
+                ) {
+                    connection.inputStream
+                } else {
+                    connection.errorStream
+                }
+
+            val body =
+                stream
+                    ?.bufferedReader()
+                    ?.use {
+                        it.readText()
+                    }
+                    ?: ""
+
+            if (
+                code !in 200..299
+            ) {
+                throw Exception(
+                    "HTTP $code"
+                )
+            }
+
             return body
+
         } finally {
             connection.disconnect()
         }
     }
 
-    private fun rounded(color: Int, radiusDp: Float): GradientDrawable {
-        return GradientDrawable().apply {
-            setColor(color)
-            cornerRadius = dp(radiusDp).toFloat()
-            setStroke(dp(1), Color.argb(25, 255, 255, 255))
-        }
-    }
 
-    private fun dp(value: Int): Int =
-        (value * resources.displayMetrics.density).toInt()
+    private fun dp(
+        value: Int
+    ): Int =
+        (
+            value *
+            resources.displayMetrics.density
+        ).toInt()
 
-    private fun dp(value: Float): Int =
-        (value * resources.displayMetrics.density).toInt()
-
-    override fun onPause() {
-        super.onPause()
-        if (::player.isInitialized) player.pause()
-    }
 
     override fun onDestroy() {
-        handler.removeCallbacksAndMessages(null)
-        if (::playerView.isInitialized) playerView.player = null
-        if (::player.isInitialized) player.release()
+
+        handler.removeCallbacksAndMessages(
+            null
+        )
+
+        playerView.player =
+            null
+
+        player.release()
+
         super.onDestroy()
     }
 }
@@ -1458,7 +2008,7 @@ class FloatingPlayerService : Service() {
                 9f /
                 16f
             ).toInt() +
-            dp(14)
+            dp(16)
 
         expandedParams =
             WindowManager.LayoutParams(
@@ -1499,12 +2049,6 @@ class FloatingPlayerService : Service() {
                 orientation =
                     LinearLayout.VERTICAL
 
-                clipToOutline =
-                    true
-
-                elevation =
-                    dp(8).toFloat()
-
                 background =
                     rounded(
                         Color.rgb(
@@ -1538,7 +2082,7 @@ class FloatingPlayerService : Service() {
                     "⋯"
 
                 textSize =
-                    18f
+                    20f
 
                 gravity =
                     Gravity.CENTER
@@ -1558,7 +2102,7 @@ class FloatingPlayerService : Service() {
             dots,
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(14)
+                dp(16)
             )
         )
 
@@ -1669,8 +2213,8 @@ class FloatingPlayerService : Service() {
         root.addView(
             resize,
             FrameLayout.LayoutParams(
-                dp(82),
-                dp(82),
+                dp(34),
+                dp(34),
                 Gravity.BOTTOM or
                     Gravity.END
             )
@@ -1957,7 +2501,7 @@ class FloatingPlayerService : Service() {
                     Gravity.CENTER_HORIZONTAL
             ).apply {
                 topMargin =
-                    dp(15)
+                    dp(18)
             }
         )
 
@@ -2406,73 +2950,123 @@ class FloatingPlayerService : Service() {
     private fun enableResize(
         target: View
     ) {
+
         target.setOnTouchListener(
             object : View.OnTouchListener {
 
-                var startWidth = 0
-                var touchX = 0f
-                var touchY = 0f
+                var startWidth =
+                    0
+
+                var startHeight =
+                    0
+
+                var touchX =
+                    0f
+
+                var touchY =
+                    0f
+
 
                 override fun onTouch(
                     view: View?,
                     event: MotionEvent
                 ): Boolean {
 
-                    if (fullscreen) return true
+                    if (fullscreen) {
+                        return false
+                    }
 
-                    val params = expandedParams ?: return false
+                    val params =
+                        expandedParams
+                            ?: return false
 
-                    when (event.actionMasked) {
+                    when (
+                        event.action
+                    ) {
+
                         MotionEvent.ACTION_DOWN -> {
-                            startWidth = params.width
-                            touchX = event.rawX
-                            touchY = event.rawY
-                            handler.removeCallbacks(autoHideDots)
+
+                            startWidth =
+                                params.width
+
+                            startHeight =
+                                params.height
+
+                            touchX =
+                                event.rawX
+
+                            touchY =
+                                event.rawY
+
                             return true
                         }
+
 
                         MotionEvent.ACTION_MOVE -> {
-                            val dx = event.rawX - touchX
-                            val dy = event.rawY - touchY
 
-                            val widthDelta = if (abs(dx) >= abs(dy)) {
-                                dx.toInt()
-                            } else {
-                                (dy * 16f / 9f).toInt()
-                            }
+                            val metrics =
+                                resources.displayMetrics
 
-                            val metrics = resources.displayMetrics
-                            val minWidth = dp(210)
-                            val maxWidth = (metrics.widthPixels - params.x)
-                                .coerceAtLeast(minWidth)
+                            val dx =
+                                (
+                                    event.rawX -
+                                    touchX
+                                ).toInt()
 
-                            var newWidth = (startWidth + widthDelta)
-                                .coerceIn(minWidth, maxWidth)
+                            val dy =
+                                (
+                                    event.rawY -
+                                    touchY
+                                ).toInt()
 
-                            val chromeHeight = dp(14)
-                            var newHeight = (newWidth * 9f / 16f).toInt() + chromeHeight
-                            val maxHeight = (metrics.heightPixels - params.y)
-                                .coerceAtLeast(dp(150))
+                            val minWidth =
+                                dp(220)
 
-                            if (newHeight > maxHeight) {
-                                newHeight = maxHeight
-                                newWidth = (((newHeight - chromeHeight) * 16f) / 9f)
-                                    .toInt()
-                                    .coerceIn(minWidth, maxWidth)
-                            }
+                            val minHeight =
+                                dp(155)
 
-                            params.width = newWidth
-                            params.height = newHeight
+                            val maxWidth =
+                                (
+                                    metrics.widthPixels -
+                                    params.x
+                                ).coerceAtLeast(
+                                    minWidth
+                                )
+
+                            val maxHeight =
+                                (
+                                    metrics.heightPixels -
+                                    params.y
+                                ).coerceAtLeast(
+                                    minHeight
+                                )
+
+                            params.width =
+                                (
+                                    startWidth +
+                                    dx
+                                ).coerceIn(
+                                    minWidth,
+                                    maxWidth
+                                )
+
+                            params.height =
+                                (
+                                    startHeight +
+                                    dy
+                                ).coerceIn(
+                                    minHeight,
+                                    maxHeight
+                                )
 
                             expandedRoot?.let {
-                                wm.updateViewLayout(it, params)
-                            }
-                            return true
-                        }
 
-                        MotionEvent.ACTION_UP,
-                        MotionEvent.ACTION_CANCEL -> {
-                            showDotsTemporarily()
+                                wm.updateViewLayout(
+                                    it,
+                                    params
+                                )
+                            }
+
                             return true
                         }
                     }
@@ -2956,11 +3550,44 @@ cat > app/src/main/assets/index.html <<'__INDEX_HTML__'
 
     <div class="home-content">
 
-      <div id="searchStatus" class="search-status">
-        Cari drama yang mau ditonton.
-      </div>
+      <section class="home-section">
+        <div class="section-heading">
+          <div>
+            <span class="section-kicker">REKOMENDASI</span>
+            <h2>Untuk Kamu</h2>
+          </div>
 
-      <div id="searchResults" class="movie-grid"></div>
+          <button
+            id="refreshForYouButton"
+            class="refresh-button"
+            type="button"
+            aria-label="Muat ulang rekomendasi"
+          >
+            ↻
+          </button>
+        </div>
+
+        <div id="forYouStatus" class="search-status">
+          Memuat rekomendasi...
+        </div>
+
+        <div id="forYouResults" class="movie-grid"></div>
+      </section>
+
+      <section id="searchSection" class="home-section search-section">
+        <div class="section-heading">
+          <div>
+            <span class="section-kicker">PENCARIAN</span>
+            <h2>Hasil Pencarian</h2>
+          </div>
+        </div>
+
+        <div id="searchStatus" class="search-status">
+          Ketik judul drama di atas.
+        </div>
+
+        <div id="searchResults" class="movie-grid"></div>
+      </section>
 
     </div>
 
@@ -3196,7 +3823,7 @@ cat > app/src/main/assets/index.html <<'__INDEX_HTML__'
 
 
   <!-- =========================
-       MODE PICKER
+       DETAILS + MODE PICKER
   ========================== -->
 
   <div
@@ -3211,45 +3838,64 @@ cat > app/src/main/assets/index.html <<'__INDEX_HTML__'
   >
     <div class="mode-handle"></div>
 
-    <div class="mode-header">
-      <div>
-        <h2>Pilih mode nonton</h2>
-        <p id="modeBookTitle">Drama</p>
-      </div>
-
-      <button
-        id="closeModeButton"
-        class="mode-close"
-        type="button"
-        aria-label="Tutup"
+    <div class="detail-hero">
+      <img
+        id="modeBookCover"
+        class="detail-cover"
+        alt="Cover"
       >
-        ✕
-      </button>
+
+      <div class="detail-main">
+        <div class="mode-header">
+          <div class="detail-title-wrap">
+            <span class="section-kicker">PILIH MODE NONTON</span>
+            <h2 id="modeBookTitle">Drama</h2>
+          </div>
+
+          <button
+            id="closeModeButton"
+            class="mode-close"
+            type="button"
+            aria-label="Tutup"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div id="modeBookMeta" class="detail-meta">Memuat detail...</div>
+        <div id="modeBookThemes" class="detail-chips"></div>
+      </div>
     </div>
 
-    <button
-      id="shortsModeButton"
-      class="mode-option"
-      type="button"
-    >
-      <span class="mode-icon">▯</span>
-      <span>
-        <strong>YouTube Shorts</strong>
-        <small>Fullscreen, swipe atas/bawah buat pindah episode.</small>
-      </span>
-    </button>
+    <p id="modeBookDesc" class="detail-desc">
+      Memuat deskripsi...
+    </p>
 
-    <button
-      id="floatingModeButton"
-      class="mode-option"
-      type="button"
-    >
-      <span class="mode-icon">◫</span>
-      <span>
-        <strong>Floating window</strong>
-        <small>Nonton sambil buka game, bisa drag, resize, dan minimize.</small>
-      </span>
-    </button>
+    <div class="mode-actions">
+      <button
+        id="shortsModeButton"
+        class="mode-option primary-mode"
+        type="button"
+      >
+        <span class="mode-icon">▯</span>
+        <span>
+          <strong>YouTube Shorts</strong>
+          <small>Fullscreen dan swipe episode.</small>
+        </span>
+      </button>
+
+      <button
+        id="floatingModeButton"
+        class="mode-option"
+        type="button"
+      >
+        <span class="mode-icon">◫</span>
+        <span>
+          <strong>Floating window</strong>
+          <small>Nonton sambil buka aplikasi lain.</small>
+        </span>
+      </button>
+    </div>
   </section>
 
   <script src="script.js"></script>
@@ -3782,6 +4428,265 @@ button {
   font-weight: 800;
 }
 
+
+/* =========================
+   HOME SECTIONS
+========================= */
+
+.home-section {
+  margin-bottom: 30px;
+}
+
+.search-section {
+  scroll-margin-top: 130px;
+}
+
+.section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.section-heading h2 {
+  margin: 2px 0 0;
+  font-size: 21px;
+  letter-spacing: -0.2px;
+}
+
+.section-kicker {
+  display: block;
+  color: #8290a6;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1.25px;
+}
+
+.refresh-button {
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255,255,255,0.05);
+  color: var(--text);
+  font-size: 21px;
+}
+
+.movie-card {
+  position: relative;
+  transform: translateZ(0);
+  transition: transform 0.16s ease, border-color 0.16s ease, background 0.16s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.movie-card:active {
+  transform: scale(0.975);
+  border-color: rgba(255,255,255,0.18);
+}
+
+.movie-cover-wrap {
+  position: relative;
+}
+
+.movie-count {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  padding: 5px 8px;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 999px;
+  background: rgba(5,7,10,0.76);
+  color: white;
+  font-size: 10px;
+  font-weight: 800;
+  backdrop-filter: blur(10px);
+}
+
+.movie-popularity {
+  margin-top: 6px;
+  color: #7f8a9d;
+  font-size: 11px;
+}
+
+/* =========================
+   DETAILS / MODE SHEET
+========================= */
+
+.mode-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 299;
+  background: rgba(0, 0, 0, 0.62);
+  backdrop-filter: blur(6px);
+}
+
+.mode-sheet {
+  position: fixed;
+  z-index: 300;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  max-height: min(82dvh, 720px);
+  overflow-y: auto;
+  transform: translateY(105%);
+  transition: transform 0.26s cubic-bezier(.2,.8,.2,1);
+  padding: 8px 16px max(18px, env(safe-area-inset-bottom));
+  border: 1px solid rgba(255,255,255,0.08);
+  border-bottom: 0;
+  border-radius: 28px 28px 0 0;
+  background:
+    radial-gradient(circle at 10% 0%, rgba(73, 90, 130, 0.24), transparent 34%),
+    linear-gradient(180deg, rgba(22,26,34,0.99), rgba(10,13,18,0.99));
+  box-shadow: 0 -18px 50px rgba(0,0,0,0.42);
+  pointer-events: auto;
+}
+
+.mode-sheet.open {
+  transform: translateY(0);
+}
+
+.mode-handle {
+  width: 46px;
+  height: 5px;
+  margin: 2px auto 16px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.22);
+}
+
+.detail-hero {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.detail-cover {
+  width: 92px;
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+  border-radius: 15px;
+  background: #171b23;
+  box-shadow: 0 12px 28px rgba(0,0,0,0.35);
+}
+
+.detail-main {
+  min-width: 0;
+}
+
+.mode-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.detail-title-wrap {
+  min-width: 0;
+}
+
+.mode-header h2 {
+  margin: 4px 0 0;
+  font-size: 20px;
+  line-height: 1.2;
+}
+
+.mode-close {
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 999px;
+  background: rgba(255,255,255,0.06);
+  color: white;
+}
+
+.detail-meta {
+  margin-top: 9px;
+  color: #aeb8c8;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.detail-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.detail-chip {
+  padding: 6px 9px;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 999px;
+  background: rgba(255,255,255,0.05);
+  color: #d9e0ec;
+  font-size: 10px;
+}
+
+.detail-desc {
+  margin: 16px 2px 14px;
+  color: #bdc6d4;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.mode-actions {
+  display: grid;
+  gap: 10px;
+}
+
+.mode-option {
+  width: 100%;
+  min-height: 66px;
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 12px 14px;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 18px;
+  background: rgba(255,255,255,0.055);
+  text-align: left;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.mode-option:active {
+  transform: scale(0.985);
+  background: rgba(255,255,255,0.09);
+}
+
+.primary-mode {
+  background: linear-gradient(180deg, rgba(255,255,255,0.13), rgba(255,255,255,0.07));
+}
+
+.mode-icon {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: 13px;
+  background: rgba(255,255,255,0.08);
+  font-size: 22px;
+}
+
+.mode-option span:last-child {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mode-option strong {
+  font-size: 14px;
+}
+
+.mode-option small {
+  color: #919bad;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
 @media (min-width: 700px) {
   .player-page {
     left: 50%;
@@ -3792,13 +4697,15 @@ button {
     box-shadow: var(--shadow);
   }
 
-  .episode-sheet {
+  .episode-sheet,
+  .mode-sheet {
     left: 50%;
     width: min(100%, 500px);
     transform: translate(-50%, 105%);
   }
 
-  .episode-sheet.open {
+  .episode-sheet.open,
+  .mode-sheet.open {
     transform: translate(-50%, 0);
   }
 }
@@ -3862,6 +4769,18 @@ const searchStatus =
 
 const searchResults =
   document.getElementById("searchResults");
+
+const forYouStatus =
+  document.getElementById("forYouStatus");
+
+const forYouResults =
+  document.getElementById("forYouResults");
+
+const refreshForYouButton =
+  document.getElementById("refreshForYouButton");
+
+const searchSection =
+  document.getElementById("searchSection");
 
 
 const playerPage =
@@ -3946,6 +4865,18 @@ const modeSheet =
 const modeBookTitle =
   document.getElementById("modeBookTitle");
 
+const modeBookCover =
+  document.getElementById("modeBookCover");
+
+const modeBookMeta =
+  document.getElementById("modeBookMeta");
+
+const modeBookThemes =
+  document.getElementById("modeBookThemes");
+
+const modeBookDesc =
+  document.getElementById("modeBookDesc");
+
 const closeModeButton =
   document.getElementById("closeModeButton");
 
@@ -3954,6 +4885,74 @@ const shortsModeButton =
 
 const floatingModeButton =
   document.getElementById("floatingModeButton");
+
+
+/* =========================
+   FOR YOU
+========================= */
+
+async function loadForYou() {
+
+  forYouStatus.textContent =
+    "Memuat rekomendasi...";
+
+  forYouResults.innerHTML = "";
+
+  try {
+
+    let data;
+
+    if (
+      window.AndroidApp &&
+      typeof window.AndroidApp.getForYou ===
+        "function"
+    ) {
+
+      data = JSON.parse(
+        window.AndroidApp.getForYou()
+      );
+
+    } else {
+
+      const response =
+        await fetch(
+          `${API}/api/foryou?lang=in`
+        );
+
+      if (!response.ok) {
+        throw new Error(
+          `HTTP ${response.status}`
+        );
+      }
+
+      data = await response.json();
+    }
+
+    if (
+      !data.ok ||
+      !Array.isArray(data.items)
+    ) {
+      throw new Error(
+        "Format For You tidak valid"
+      );
+    }
+
+    forYouStatus.textContent =
+      `${data.items.length} rekomendasi`;
+
+    renderMovies(
+      data.items,
+      forYouResults
+    );
+
+  } catch (error) {
+
+    console.error(error);
+
+    forYouStatus.textContent =
+      `Gagal memuat rekomendasi: ${error.message}`;
+  }
+}
 
 
 /* =========================
@@ -4025,8 +5024,14 @@ async function searchDrama() {
       `${data.items.length} hasil ditemukan`;
 
     renderMovies(
-      data.items
+      data.items,
+      searchResults
     );
+
+    searchSection.scrollIntoView({
+      behavior: "smooth",
+      block: "start"
+    });
 
   } catch (error) {
 
@@ -4044,9 +5049,12 @@ async function searchDrama() {
    MOVIE LIST
 ========================= */
 
-function renderMovies(items) {
+function renderMovies(
+  items,
+  container = searchResults
+) {
 
-  searchResults.innerHTML = "";
+  container.innerHTML = "";
 
   items.forEach(book => {
 
@@ -4056,62 +5064,102 @@ function renderMovies(items) {
     card.className =
       "movie-card";
 
+    card.tabIndex = 0;
 
     const themes =
       Array.isArray(book.theme)
         ? book.theme.join(" • ")
         : "";
 
+    const collect =
+      Number(book.collect_count || 0);
 
     card.innerHTML = `
-      <img
-        class="movie-cover"
-        src="${escapeAttr(book.pic || "")}"
-        alt="${escapeAttr(book.title || "")}"
-        loading="lazy"
-      >
+      <div class="movie-cover-wrap">
+        <img
+          class="movie-cover"
+          src="${escapeAttr(book.pic || "")}"
+          alt="${escapeAttr(book.title || "")}"
+          loading="lazy"
+        >
+
+        <span class="movie-count">
+          ${book.chapter_count || 0} EP
+        </span>
+      </div>
 
       <div class="movie-info">
-
         <div class="movie-title">
           ${escapeHtml(book.title || "Tanpa judul")}
         </div>
 
         <div class="movie-meta">
-          ${book.chapter_count || 0} EP
-          ${themes ? ` • ${escapeHtml(themes)}` : ""}
+          ${themes ? escapeHtml(themes) : "Drama pendek"}
         </div>
 
+        ${collect ? `
+          <div class="movie-popularity">
+            ♥ ${formatCompactNumber(collect)}
+          </div>
+        ` : ""}
       </div>
     `;
 
+    const open = () =>
+      showModePicker(book);
 
     card.addEventListener(
       "click",
-      () => showModePicker(book)
+      open
     );
 
-
-    searchResults.appendChild(
-      card
+    card.addEventListener(
+      "keydown",
+      event => {
+        if (
+          event.key === "Enter" ||
+          event.key === " "
+        ) {
+          event.preventDefault();
+          open();
+        }
+      }
     );
 
+    container.appendChild(card);
   });
-
 }
 
+
+function formatCompactNumber(value) {
+  const number = Number(value || 0);
+
+  if (number >= 1000000) {
+    return `${(number / 1000000).toFixed(1).replace(".0", "")} jt`;
+  }
+
+  if (number >= 1000) {
+    return `${(number / 1000).toFixed(1).replace(".0", "")} rb`;
+  }
+
+  return String(number);
+}
 
 
 /* =========================
    MODE PICKER
 ========================= */
 
-function showModePicker(book) {
+async function showModePicker(book) {
 
-  selectedModeBook = book;
+  selectedModeBook = {
+    ...book
+  };
 
-  modeBookTitle.textContent =
-    book.title || "Drama";
+  renderModeDetails(
+    selectedModeBook,
+    true
+  );
 
   modeOverlay.classList.remove(
     "hidden"
@@ -4129,6 +5177,142 @@ function showModePicker(book) {
       );
     }
   );
+
+  const bookId =
+    String(book.book_id || "");
+
+  if (!bookId) {
+    return;
+  }
+
+  try {
+
+    let details;
+
+    if (
+      window.AndroidApp &&
+      typeof window.AndroidApp.getDetails ===
+        "function"
+    ) {
+
+      details = JSON.parse(
+        window.AndroidApp.getDetails(
+          bookId
+        )
+      );
+
+    } else {
+
+      const response =
+        await fetch(
+          `${API}/api/details?lang=in&bookId=${encodeURIComponent(bookId)}`
+        );
+
+      if (!response.ok) {
+        throw new Error(
+          `HTTP ${response.status}`
+        );
+      }
+
+      details = await response.json();
+    }
+
+    if (details.ok) {
+
+      selectedModeBook = {
+        ...selectedModeBook,
+        ...details,
+        book_id:
+          details.id ||
+          selectedModeBook.book_id,
+        chapter_count:
+          details.chapters ||
+          selectedModeBook.chapter_count
+      };
+
+      renderModeDetails(
+        selectedModeBook,
+        false
+      );
+    }
+
+  } catch (error) {
+    console.error(
+      "DETAILS:",
+      error
+    );
+
+    modeBookDesc.textContent =
+      "Detail tambahan gagal dimuat, tapi mode nonton tetap bisa dipakai.";
+  }
+}
+
+
+function renderModeDetails(
+  book,
+  loadingDetails = false
+) {
+
+  modeBookTitle.textContent =
+    book.title || "Drama";
+
+  modeBookCover.src =
+    book.pic || "";
+
+  const chapters =
+    book.chapters ||
+    book.chapter_count ||
+    0;
+
+  const views =
+    Number(book.views || 0);
+
+  const collect =
+    Number(book.collect_count || 0);
+
+  const meta = [];
+
+  if (chapters) {
+    meta.push(`${chapters} episode`);
+  }
+
+  if (views) {
+    meta.push(`${formatCompactNumber(views)} tayangan`);
+  }
+
+  if (collect) {
+    meta.push(`${formatCompactNumber(collect)} favorit`);
+  }
+
+  modeBookMeta.textContent =
+    meta.join(" • ") ||
+    "Drama pendek";
+
+  const themes =
+    Array.isArray(book.theme)
+      ? book.theme
+      : [];
+
+  modeBookThemes.innerHTML =
+    themes
+      .slice(0, 5)
+      .map(theme => `
+        <span class="detail-chip">
+          ${escapeHtml(theme)}
+        </span>
+      `)
+      .join("");
+
+  if (book.desc) {
+    modeBookDesc.textContent =
+      book.desc;
+  } else if (loadingDetails) {
+    modeBookDesc.textContent =
+      "Memuat deskripsi...";
+  } else {
+    modeBookDesc.textContent =
+      "Pilih mode nonton di bawah.";
+  }
 }
 
 
@@ -5445,6 +6629,12 @@ function escapeAttr(text) {
    EVENTS
 ========================= */
 
+refreshForYouButton.addEventListener(
+  "click",
+  loadForYou
+);
+
+
 closeModeButton.addEventListener(
   "click",
   closeModePicker
@@ -5751,6 +6941,13 @@ document.addEventListener(
 
   }
 );
+
+/* =========================
+   STARTUP
+========================= */
+
+loadForYou();
+
 __SCRIPT_JS__
 
 cat > .gitignore <<'__GITIGNORE__'
@@ -5823,8 +7020,10 @@ echo "  - minimize jadi bubble R"
 echo "  - auto-next episode"
 echo
 echo "Home:"
-echo "  - WebView pakai UI HTML/CSS lama"
-echo "  - tap drama -> pilih mode"
+echo "  - For You dari /api/foryou"
+echo "  - Search drama"
+echo "  - Detail dari /api/details"
+echo "  - tap card -> detail + pilih mode"
 echo
 echo "Files:"
 find . -type f -not -path "./.git/*" | sort

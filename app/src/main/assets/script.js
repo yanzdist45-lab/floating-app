@@ -50,6 +50,18 @@ const searchStatus =
 const searchResults =
   document.getElementById("searchResults");
 
+const forYouStatus =
+  document.getElementById("forYouStatus");
+
+const forYouResults =
+  document.getElementById("forYouResults");
+
+const refreshForYouButton =
+  document.getElementById("refreshForYouButton");
+
+const searchSection =
+  document.getElementById("searchSection");
+
 
 const playerPage =
   document.getElementById("playerPage");
@@ -133,6 +145,18 @@ const modeSheet =
 const modeBookTitle =
   document.getElementById("modeBookTitle");
 
+const modeBookCover =
+  document.getElementById("modeBookCover");
+
+const modeBookMeta =
+  document.getElementById("modeBookMeta");
+
+const modeBookThemes =
+  document.getElementById("modeBookThemes");
+
+const modeBookDesc =
+  document.getElementById("modeBookDesc");
+
 const closeModeButton =
   document.getElementById("closeModeButton");
 
@@ -141,6 +165,74 @@ const shortsModeButton =
 
 const floatingModeButton =
   document.getElementById("floatingModeButton");
+
+
+/* =========================
+   FOR YOU
+========================= */
+
+async function loadForYou() {
+
+  forYouStatus.textContent =
+    "Memuat rekomendasi...";
+
+  forYouResults.innerHTML = "";
+
+  try {
+
+    let data;
+
+    if (
+      window.AndroidApp &&
+      typeof window.AndroidApp.getForYou ===
+        "function"
+    ) {
+
+      data = JSON.parse(
+        window.AndroidApp.getForYou()
+      );
+
+    } else {
+
+      const response =
+        await fetch(
+          `${API}/api/foryou?lang=in`
+        );
+
+      if (!response.ok) {
+        throw new Error(
+          `HTTP ${response.status}`
+        );
+      }
+
+      data = await response.json();
+    }
+
+    if (
+      !data.ok ||
+      !Array.isArray(data.items)
+    ) {
+      throw new Error(
+        "Format For You tidak valid"
+      );
+    }
+
+    forYouStatus.textContent =
+      `${data.items.length} rekomendasi`;
+
+    renderMovies(
+      data.items,
+      forYouResults
+    );
+
+  } catch (error) {
+
+    console.error(error);
+
+    forYouStatus.textContent =
+      `Gagal memuat rekomendasi: ${error.message}`;
+  }
+}
 
 
 /* =========================
@@ -212,8 +304,14 @@ async function searchDrama() {
       `${data.items.length} hasil ditemukan`;
 
     renderMovies(
-      data.items
+      data.items,
+      searchResults
     );
+
+    searchSection.scrollIntoView({
+      behavior: "smooth",
+      block: "start"
+    });
 
   } catch (error) {
 
@@ -231,9 +329,12 @@ async function searchDrama() {
    MOVIE LIST
 ========================= */
 
-function renderMovies(items) {
+function renderMovies(
+  items,
+  container = searchResults
+) {
 
-  searchResults.innerHTML = "";
+  container.innerHTML = "";
 
   items.forEach(book => {
 
@@ -243,62 +344,102 @@ function renderMovies(items) {
     card.className =
       "movie-card";
 
+    card.tabIndex = 0;
 
     const themes =
       Array.isArray(book.theme)
         ? book.theme.join(" • ")
         : "";
 
+    const collect =
+      Number(book.collect_count || 0);
 
     card.innerHTML = `
-      <img
-        class="movie-cover"
-        src="${escapeAttr(book.pic || "")}"
-        alt="${escapeAttr(book.title || "")}"
-        loading="lazy"
-      >
+      <div class="movie-cover-wrap">
+        <img
+          class="movie-cover"
+          src="${escapeAttr(book.pic || "")}"
+          alt="${escapeAttr(book.title || "")}"
+          loading="lazy"
+        >
+
+        <span class="movie-count">
+          ${book.chapter_count || 0} EP
+        </span>
+      </div>
 
       <div class="movie-info">
-
         <div class="movie-title">
           ${escapeHtml(book.title || "Tanpa judul")}
         </div>
 
         <div class="movie-meta">
-          ${book.chapter_count || 0} EP
-          ${themes ? ` • ${escapeHtml(themes)}` : ""}
+          ${themes ? escapeHtml(themes) : "Drama pendek"}
         </div>
 
+        ${collect ? `
+          <div class="movie-popularity">
+            ♥ ${formatCompactNumber(collect)}
+          </div>
+        ` : ""}
       </div>
     `;
 
+    const open = () =>
+      showModePicker(book);
 
     card.addEventListener(
       "click",
-      () => showModePicker(book)
+      open
     );
 
-
-    searchResults.appendChild(
-      card
+    card.addEventListener(
+      "keydown",
+      event => {
+        if (
+          event.key === "Enter" ||
+          event.key === " "
+        ) {
+          event.preventDefault();
+          open();
+        }
+      }
     );
 
+    container.appendChild(card);
   });
-
 }
 
+
+function formatCompactNumber(value) {
+  const number = Number(value || 0);
+
+  if (number >= 1000000) {
+    return `${(number / 1000000).toFixed(1).replace(".0", "")} jt`;
+  }
+
+  if (number >= 1000) {
+    return `${(number / 1000).toFixed(1).replace(".0", "")} rb`;
+  }
+
+  return String(number);
+}
 
 
 /* =========================
    MODE PICKER
 ========================= */
 
-function showModePicker(book) {
+async function showModePicker(book) {
 
-  selectedModeBook = book;
+  selectedModeBook = {
+    ...book
+  };
 
-  modeBookTitle.textContent =
-    book.title || "Drama";
+  renderModeDetails(
+    selectedModeBook,
+    true
+  );
 
   modeOverlay.classList.remove(
     "hidden"
@@ -316,6 +457,142 @@ function showModePicker(book) {
       );
     }
   );
+
+  const bookId =
+    String(book.book_id || "");
+
+  if (!bookId) {
+    return;
+  }
+
+  try {
+
+    let details;
+
+    if (
+      window.AndroidApp &&
+      typeof window.AndroidApp.getDetails ===
+        "function"
+    ) {
+
+      details = JSON.parse(
+        window.AndroidApp.getDetails(
+          bookId
+        )
+      );
+
+    } else {
+
+      const response =
+        await fetch(
+          `${API}/api/details?lang=in&bookId=${encodeURIComponent(bookId)}`
+        );
+
+      if (!response.ok) {
+        throw new Error(
+          `HTTP ${response.status}`
+        );
+      }
+
+      details = await response.json();
+    }
+
+    if (details.ok) {
+
+      selectedModeBook = {
+        ...selectedModeBook,
+        ...details,
+        book_id:
+          details.id ||
+          selectedModeBook.book_id,
+        chapter_count:
+          details.chapters ||
+          selectedModeBook.chapter_count
+      };
+
+      renderModeDetails(
+        selectedModeBook,
+        false
+      );
+    }
+
+  } catch (error) {
+    console.error(
+      "DETAILS:",
+      error
+    );
+
+    modeBookDesc.textContent =
+      "Detail tambahan gagal dimuat, tapi mode nonton tetap bisa dipakai.";
+  }
+}
+
+
+function renderModeDetails(
+  book,
+  loadingDetails = false
+) {
+
+  modeBookTitle.textContent =
+    book.title || "Drama";
+
+  modeBookCover.src =
+    book.pic || "";
+
+  const chapters =
+    book.chapters ||
+    book.chapter_count ||
+    0;
+
+  const views =
+    Number(book.views || 0);
+
+  const collect =
+    Number(book.collect_count || 0);
+
+  const meta = [];
+
+  if (chapters) {
+    meta.push(`${chapters} episode`);
+  }
+
+  if (views) {
+    meta.push(`${formatCompactNumber(views)} tayangan`);
+  }
+
+  if (collect) {
+    meta.push(`${formatCompactNumber(collect)} favorit`);
+  }
+
+  modeBookMeta.textContent =
+    meta.join(" • ") ||
+    "Drama pendek";
+
+  const themes =
+    Array.isArray(book.theme)
+      ? book.theme
+      : [];
+
+  modeBookThemes.innerHTML =
+    themes
+      .slice(0, 5)
+      .map(theme => `
+        <span class="detail-chip">
+          ${escapeHtml(theme)}
+        </span>
+      `)
+      .join("");
+
+  if (book.desc) {
+    modeBookDesc.textContent =
+      book.desc;
+  } else if (loadingDetails) {
+    modeBookDesc.textContent =
+      "Memuat deskripsi...";
+  } else {
+    modeBookDesc.textContent =
+      "Pilih mode nonton di bawah.";
+  }
 }
 
 
@@ -1632,6 +1909,12 @@ function escapeAttr(text) {
    EVENTS
 ========================= */
 
+refreshForYouButton.addEventListener(
+  "click",
+  loadForYou
+);
+
+
 closeModeButton.addEventListener(
   "click",
   closeModePicker
@@ -1938,3 +2221,10 @@ document.addEventListener(
 
   }
 );
+
+/* =========================
+   STARTUP
+========================= */
+
+loadForYou();
+
