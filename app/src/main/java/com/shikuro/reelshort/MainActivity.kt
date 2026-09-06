@@ -268,7 +268,7 @@ class MainActivity : Activity() {
 
         connection.setRequestProperty(
             "User-Agent",
-            "ReelShortFloating/5.0 Android"
+            "ReelShortFloating/4.0 Android"
         )
 
         try {

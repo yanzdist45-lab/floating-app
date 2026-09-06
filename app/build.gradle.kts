@@ -15,7 +15,7 @@ android {
         targetSdk = 35
 
         versionCode = 5
-        versionName = "5.0"
+        versionName = "4.2"
     }
 
     compileOptions {

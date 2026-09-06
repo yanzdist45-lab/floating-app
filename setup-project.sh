@@ -3,7 +3,7 @@
 set -e
 
 echo "=========================================="
-echo " ReelShort Dual Mode Premium"
+echo " ReelShort Dual Mode Project"
 echo "=========================================="
 
 mkdir -p .github/workflows
@@ -69,7 +69,7 @@ android {
         targetSdk = 35
 
         versionCode = 5
-        versionName = "5.0"
+        versionName = "4.2"
     }
 
     compileOptions {
@@ -454,7 +454,7 @@ class MainActivity : Activity() {
 
         connection.setRequestProperty(
             "User-Agent",
-            "ReelShortFloating/5.0 Android"
+            "ReelShortFloating/4.0 Android"
         )
 
         try {
@@ -512,7 +512,6 @@ import android.app.Dialog
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
-import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -520,9 +519,6 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
-import android.view.WindowInsets
-import android.view.WindowInsetsController
-import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.GridLayout
 import android.widget.LinearLayout
@@ -554,128 +550,56 @@ class ShortsActivity : Activity() {
     )
 
     private lateinit var root: FrameLayout
-    private lateinit var playerView: PlayerView
     private lateinit var player: ExoPlayer
-
-    private lateinit var topChrome: FrameLayout
-    private lateinit var bottomMeta: LinearLayout
-    private lateinit var rightRail: LinearLayout
-    private lateinit var centerPlay: TextView
+    private lateinit var playerView: PlayerView
+    private lateinit var topControls: LinearLayout
+    private lateinit var bottomControls: LinearLayout
     private lateinit var titleText: TextView
     private lateinit var episodeText: TextView
     private lateinit var loadingText: TextView
-    private lateinit var progressTrack: FrameLayout
-    private lateinit var progressFill: View
+    private lateinit var centerPlay: TextView
 
     private val episodes = mutableListOf<Episode>()
-
     private var currentPosition = 0
     private var bookId = ""
     private var bookTitle = ""
 
-    private var touchStartY = 0f
     private var touchStartX = 0f
+    private var touchStartY = 0f
     private var touchStartedAt = 0L
 
     private val handler = Handler(Looper.getMainLooper())
-
-    private val hideControlsRunnable = Runnable {
-        if (::player.isInitialized && player.isPlaying) {
-            setControlsVisible(false)
-        }
-    }
-
-    private val progressRunnable = object : Runnable {
-        override fun run() {
-            updateProgress()
-            handler.postDelayed(this, 250)
-        }
-    }
+    private val hideControlsRunnable = Runnable { setControlsVisible(false) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        bookId = intent.getStringExtra(EXTRA_BOOK_ID).orEmpty()
-        bookTitle = intent.getStringExtra(EXTRA_BOOK_TITLE).orEmpty()
+        try {
+            bookId = intent.getStringExtra(EXTRA_BOOK_ID).orEmpty()
+            bookTitle = intent.getStringExtra(EXTRA_BOOK_TITLE).orEmpty()
 
-        if (bookId.isBlank()) {
+            if (bookId.isBlank()) {
+                finish()
+                return
+            }
+
+            window.statusBarColor = Color.BLACK
+            window.navigationBarColor = Color.BLACK
+
+            // Init player BEFORE building UI. This avoids lateinit ordering crashes.
+            player = ExoPlayer.Builder(this).build()
+            buildUi()
+            installPlayerListener()
+            loadEpisodes()
+
+        } catch (error: Throwable) {
+            error.printStackTrace()
+            Toast.makeText(
+                this,
+                "Shorts gagal dibuka: ${error.javaClass.simpleName}",
+                Toast.LENGTH_LONG
+            ).show()
             finish()
-            return
-        }
-
-        window.statusBarColor = Color.BLACK
-        window.navigationBarColor = Color.BLACK
-        hideSystemBars()
-
-        buildUi()
-
-        player = ExoPlayer.Builder(this).build()
-        playerView.player = player
-
-        player.addListener(object : Player.Listener {
-            override fun onPlaybackStateChanged(state: Int) {
-                when (state) {
-                    Player.STATE_BUFFERING -> {
-                        loadingText.visibility = View.VISIBLE
-                        loadingText.text = "Memuat..."
-                    }
-
-                    Player.STATE_READY -> {
-                        loadingText.visibility = View.GONE
-                    }
-
-                    Player.STATE_ENDED -> nextEpisode()
-                }
-            }
-
-            override fun onIsPlayingChanged(isPlaying: Boolean) {
-                if (isPlaying) {
-                    centerPlay.animate()
-                        .alpha(0f)
-                        .setDuration(140)
-                        .withEndAction {
-                            centerPlay.visibility = View.GONE
-                        }
-                        .start()
-                    showControlsTemporarily()
-                } else {
-                    handler.removeCallbacks(hideControlsRunnable)
-                    setControlsVisible(true)
-                    centerPlay.text = "▶"
-                    centerPlay.alpha = 1f
-                    centerPlay.visibility = View.VISIBLE
-                }
-            }
-
-            override fun onPlayerError(error: PlaybackException) {
-                loadingText.visibility = View.VISIBLE
-                loadingText.text = "Video gagal diputar"
-            }
-        })
-
-        handler.post(progressRunnable)
-        loadEpisodes()
-    }
-
-    private fun hideSystemBars() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            window.insetsController?.let { controller ->
-                controller.hide(
-                    WindowInsets.Type.statusBars() or
-                        WindowInsets.Type.navigationBars()
-                )
-                controller.systemBarsBehavior =
-                    WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-            }
-        } else {
-            @Suppress("DEPRECATION")
-            window.decorView.systemUiVisibility =
-                View.SYSTEM_UI_FLAG_FULLSCREEN or
-                    View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
-                    View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
-                    View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
-                    View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
-                    View.SYSTEM_UI_FLAG_LAYOUT_STABLE
         }
     }
 
@@ -686,6 +610,7 @@ class ShortsActivity : Activity() {
         setContentView(root)
 
         playerView = PlayerView(this).apply {
+            player = this@ShortsActivity.player
             useController = false
             resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
             setBackgroundColor(Color.BLACK)
@@ -704,9 +629,8 @@ class ShortsActivity : Activity() {
             gravity = Gravity.CENTER
             textSize = 13f
             setTextColor(Color.WHITE)
-            setBackgroundColor(Color.argb(50, 0, 0, 0))
+            setBackgroundColor(Color.argb(55, 0, 0, 0))
         }
-
         root.addView(
             loadingText,
             FrameLayout.LayoutParams(
@@ -715,197 +639,114 @@ class ShortsActivity : Activity() {
             )
         )
 
-        topChrome = FrameLayout(this).apply {
-            background = GradientDrawable(
-                GradientDrawable.Orientation.TOP_BOTTOM,
-                intArrayOf(
-                    Color.argb(190, 0, 0, 0),
-                    Color.argb(0, 0, 0, 0)
-                )
-            )
+        centerPlay = TextView(this).apply {
+            text = "▶"
+            textSize = 26f
+            gravity = Gravity.CENTER
+            setTextColor(Color.WHITE)
+            visibility = View.GONE
+            background = rounded(Color.argb(190, 20, 23, 30), 999f)
+            setOnClickListener {
+                togglePlayPause()
+                showControlsTemporarily()
+            }
         }
-
         root.addView(
-            topChrome,
-            FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(92),
-                Gravity.TOP
-            )
+            centerPlay,
+            FrameLayout.LayoutParams(dp(68), dp(68), Gravity.CENTER)
         )
+
+        topControls = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(12), dp(12), dp(12), dp(8))
+            setBackgroundColor(Color.argb(90, 0, 0, 0))
+        }
 
         val back = TextView(this).apply {
             text = "‹"
             textSize = 34f
             gravity = Gravity.CENTER
             setTextColor(Color.WHITE)
-            background = pill(Color.argb(120, 24, 24, 28), 999f, true)
+            background = rounded(Color.argb(120, 24, 27, 34), 999f)
             setOnClickListener { finish() }
         }
+        topControls.addView(back, LinearLayout.LayoutParams(dp(44), dp(44)))
 
-        topChrome.addView(
-            back,
-            FrameLayout.LayoutParams(
-                dp(42),
-                dp(42),
-                Gravity.START or Gravity.TOP
-            ).apply {
-                leftMargin = dp(14)
-                topMargin = dp(12)
-            }
-        )
-
-        val shortsLabel = TextView(this).apply {
-            text = "Shorts"
-            textSize = 17f
-            setTypeface(null, Typeface.BOLD)
-            gravity = Gravity.CENTER_VERTICAL
-            setTextColor(Color.WHITE)
-        }
-
-        topChrome.addView(
-            shortsLabel,
-            FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                dp(42),
-                Gravity.START or Gravity.TOP
-            ).apply {
-                leftMargin = dp(66)
-                topMargin = dp(12)
-            }
-        )
-
-        bottomMeta = LinearLayout(this).apply {
+        val titleBox = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(10), dp(76), dp(18))
-            background = GradientDrawable(
-                GradientDrawable.Orientation.BOTTOM_TOP,
-                intArrayOf(
-                    Color.argb(205, 0, 0, 0),
-                    Color.argb(0, 0, 0, 0)
-                )
-            )
+            setPadding(dp(12), 0, 0, 0)
         }
 
         titleText = TextView(this).apply {
             text = bookTitle
-            textSize = 15f
-            maxLines = 2
-            setTypeface(null, Typeface.BOLD)
+            textSize = 14f
+            maxLines = 1
             setTextColor(Color.WHITE)
+            setTypeface(null, Typeface.BOLD)
         }
 
         episodeText = TextView(this).apply {
             text = "Episode"
-            textSize = 12f
-            setTextColor(Color.argb(205, 255, 255, 255))
-            setPadding(0, dp(5), 0, 0)
-        }
-
-        val swipeHint = TextView(this).apply {
-            text = "Swipe ↑↓ untuk pindah episode"
             textSize = 11f
-            setTextColor(Color.argb(150, 255, 255, 255))
-            setPadding(0, dp(5), 0, 0)
+            setTextColor(Color.argb(190, 255, 255, 255))
         }
 
-        bottomMeta.addView(titleText)
-        bottomMeta.addView(episodeText)
-        bottomMeta.addView(swipeHint)
+        titleBox.addView(titleText)
+        titleBox.addView(episodeText)
+        topControls.addView(
+            titleBox,
+            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        )
 
         root.addView(
-            bottomMeta,
+            topControls,
             FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(142),
-                Gravity.BOTTOM
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.TOP
             )
         )
 
-        rightRail = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_HORIZONTAL
+        bottomControls = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(14), dp(10), dp(14), dp(18))
+            setBackgroundColor(Color.argb(100, 0, 0, 0))
         }
 
-        val episodesButton = railButton("EP") {
-            showEpisodePicker()
-            showControlsTemporarily()
-        }
-
-        val previousButton = railButton("↑") {
+        val previous = compactButton("‹") {
             previousEpisode()
             showControlsTemporarily()
         }
 
-        val nextButton = railButton("↓") {
+        val picker = compactButton("Episode") {
+            showEpisodePicker()
+            showControlsTemporarily()
+        }.apply { tag = "episode_picker" }
+
+        val next = compactButton("›") {
             nextEpisode()
             showControlsTemporarily()
         }
 
-        rightRail.addView(episodesButton)
-        rightRail.addView(spacer(dp(10)))
-        rightRail.addView(previousButton)
-        rightRail.addView(spacer(dp(10)))
-        rightRail.addView(nextButton)
+        bottomControls.addView(previous, LinearLayout.LayoutParams(dp(48), dp(44)))
+        bottomControls.addView(picker, LinearLayout.LayoutParams(0, dp(44), 1f).apply {
+            setMargins(dp(8), 0, dp(8), 0)
+        })
+        bottomControls.addView(next, LinearLayout.LayoutParams(dp(48), dp(44)))
 
         root.addView(
-            rightRail,
+            bottomControls,
             FrameLayout.LayoutParams(
-                dp(62),
+                ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
-                Gravity.END or Gravity.BOTTOM
-            ).apply {
-                rightMargin = dp(10)
-                bottomMargin = dp(116)
-            }
-        )
-
-        centerPlay = TextView(this).apply {
-            text = "▶"
-            textSize = 27f
-            gravity = Gravity.CENTER
-            setTextColor(Color.WHITE)
-            background = pill(Color.argb(155, 18, 20, 26), 999f, true)
-            visibility = View.GONE
-        }
-
-        root.addView(
-            centerPlay,
-            FrameLayout.LayoutParams(
-                dp(74),
-                dp(74),
-                Gravity.CENTER
-            )
-        )
-
-        progressTrack = FrameLayout(this).apply {
-            setBackgroundColor(Color.argb(80, 255, 255, 255))
-        }
-
-        progressFill = View(this).apply {
-            setBackgroundColor(Color.WHITE)
-        }
-
-        progressTrack.addView(
-            progressFill,
-            FrameLayout.LayoutParams(
-                0,
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                Gravity.START
-            )
-        )
-
-        root.addView(
-            progressTrack,
-            FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(3),
                 Gravity.BOTTOM
             )
         )
 
         playerView.setOnTouchListener { _, event ->
-            when (event.action) {
+            when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     touchStartX = event.rawX
                     touchStartY = event.rawY
@@ -920,49 +761,48 @@ class ShortsActivity : Activity() {
                     val vertical = abs(dy) > abs(dx)
 
                     when {
-                        elapsed < 850 && vertical && dy < -dp(68) -> {
-                            nextEpisode()
-                            showControlsTemporarily()
-                        }
-
-                        elapsed < 850 && vertical && dy > dp(68) -> {
-                            previousEpisode()
-                            showControlsTemporarily()
-                        }
-
-                        abs(dx) < dp(16) && abs(dy) < dp(16) -> {
-                            togglePlayPause()
-                            showControlsTemporarily()
-                        }
-
-                        else -> showControlsTemporarily()
+                        elapsed < 900 && vertical && dy < -dp(72) -> nextEpisode()
+                        elapsed < 900 && vertical && dy > dp(72) -> previousEpisode()
+                        abs(dx) < dp(18) && abs(dy) < dp(18) -> togglePlayPause()
                     }
+
+                    showControlsTemporarily()
                     true
                 }
 
+                MotionEvent.ACTION_CANCEL -> true
                 else -> true
             }
         }
     }
 
-    private fun railButton(label: String, action: () -> Unit): TextView {
-        return TextView(this).apply {
-            text = label
-            textSize = if (label.length > 1) 13f else 24f
-            setTypeface(null, Typeface.BOLD)
-            gravity = Gravity.CENTER
-            setTextColor(Color.WHITE)
-            background = pill(Color.argb(135, 20, 23, 30), 999f, true)
-            elevation = dp(4).toFloat()
-            setOnClickListener { action() }
-            layoutParams = LinearLayout.LayoutParams(dp(48), dp(48))
-        }
-    }
+    private fun installPlayerListener() {
+        player.addListener(
+            object : Player.Listener {
+                override fun onPlaybackStateChanged(state: Int) {
+                    when (state) {
+                        Player.STATE_BUFFERING -> {
+                            loadingText.visibility = View.VISIBLE
+                            loadingText.text = "Memuat..."
+                        }
+                        Player.STATE_READY -> {
+                            loadingText.visibility = View.GONE
+                        }
+                        Player.STATE_ENDED -> nextEpisode()
+                    }
+                }
 
-    private fun spacer(height: Int): View {
-        return View(this).apply {
-            layoutParams = LinearLayout.LayoutParams(1, height)
-        }
+                override fun onIsPlayingChanged(isPlaying: Boolean) {
+                    centerPlay.visibility = if (isPlaying) View.GONE else View.VISIBLE
+                    if (isPlaying) showControlsTemporarily() else setControlsVisible(true)
+                }
+
+                override fun onPlayerError(error: PlaybackException) {
+                    loadingText.visibility = View.VISIBLE
+                    loadingText.text = "Video gagal diputar"
+                }
+            }
+        )
     }
 
     private fun loadEpisodes() {
@@ -972,10 +812,7 @@ class ShortsActivity : Activity() {
                     "$API/api/stream/all-episode?lang=in&bookId=$bookId"
                 )
                 val json = JSONObject(body)
-
-                if (!json.optBoolean("ok")) {
-                    throw Exception("API episode gagal")
-                }
+                if (!json.optBoolean("ok")) throw Exception("API episode gagal")
 
                 val array = json.getJSONArray("episodes")
                 val loaded = mutableListOf<Episode>()
@@ -984,22 +821,15 @@ class ShortsActivity : Activity() {
                     val item = array.getJSONObject(i)
                     val url = selectVideoUrl(item)
                     if (url.isNotBlank()) {
-                        loaded.add(
-                            Episode(
-                                index = item.optInt("index", i + 1),
-                                url = url
-                            )
-                        )
+                        loaded.add(Episode(item.optInt("index", i + 1), url))
                     }
                 }
 
-                if (loaded.isEmpty()) {
-                    throw Exception("Tidak ada stream")
-                }
-
+                if (loaded.isEmpty()) throw Exception("Tidak ada stream")
                 val realTitle = json.optString("title", bookTitle)
 
                 runOnUiThread {
+                    if (isFinishing || isDestroyed) return@runOnUiThread
                     episodes.clear()
                     episodes.addAll(loaded)
                     bookTitle = realTitle
@@ -1007,7 +837,6 @@ class ShortsActivity : Activity() {
 
                     val saved = getSharedPreferences("player", MODE_PRIVATE)
                         .getInt("episode_$bookId", 0)
-
                     currentPosition = saved.coerceIn(0, episodes.lastIndex)
                     playEpisode(currentPosition)
                     showControlsTemporarily()
@@ -1015,25 +844,23 @@ class ShortsActivity : Activity() {
             } catch (error: Exception) {
                 error.printStackTrace()
                 runOnUiThread {
+                    if (isFinishing || isDestroyed) return@runOnUiThread
                     loadingText.visibility = View.VISIBLE
-                    loadingText.text = "Gagal memuat episode"
-                    Toast.makeText(
-                        this,
-                        error.message ?: "Gagal",
-                        Toast.LENGTH_LONG
-                    ).show()
+                    loadingText.text = "Gagal memuat episode
+${error.message.orEmpty()}"
                 }
             }
         }.start()
     }
 
     private fun playEpisode(position: Int) {
-        if (position !in episodes.indices) return
+        if (position !in episodes.indices || isFinishing || isDestroyed) return
 
         currentPosition = position
         val episode = episodes[position]
+        episodeText.text = "Episode ${episode.index} / ${episodes.size}"
 
-        episodeText.text =
+        bottomControls.findViewWithTag<TextView>("episode_picker")?.text =
             "EP.${episode.index} / EP.${episodes.size}"
 
         loadingText.visibility = View.VISIBLE
@@ -1047,21 +874,22 @@ class ShortsActivity : Activity() {
             .edit()
             .putInt("episode_$bookId", position)
             .apply()
-
-        showControlsTemporarily()
     }
 
     private fun nextEpisode() {
+        if (episodes.isEmpty()) return
         val next = currentPosition + 1
         if (next <= episodes.lastIndex) playEpisode(next)
     }
 
     private fun previousEpisode() {
+        if (episodes.isEmpty()) return
         val previous = currentPosition - 1
         if (previous >= 0) playEpisode(previous)
     }
 
     private fun togglePlayPause() {
+        if (!::player.isInitialized) return
         if (player.isPlaying) player.pause() else player.play()
     }
 
@@ -1074,69 +902,30 @@ class ShortsActivity : Activity() {
     }
 
     private fun setControlsVisible(visible: Boolean) {
-        val target = if (visible) 1f else 0f
-        val duration = if (visible) 150L else 240L
-
-        listOf<View>(topChrome, bottomMeta, rightRail).forEach { view ->
-            view.animate()
-                .alpha(target)
-                .setDuration(duration)
-                .start()
-            view.isClickable = visible
-        }
-    }
-
-    private fun updateProgress() {
-        if (!::player.isInitialized || !::progressTrack.isInitialized) return
-
-        val duration = player.duration
-        val position = player.currentPosition
-
-        if (duration <= 0L || progressTrack.width <= 0) {
-            progressFill.layoutParams = progressFill.layoutParams.apply {
-                width = 0
-            }
-            return
-        }
-
-        val ratio = (position.toDouble() / duration.toDouble())
-            .coerceIn(0.0, 1.0)
-
-        progressFill.layoutParams = progressFill.layoutParams.apply {
-            width = (progressTrack.width * ratio).toInt()
-        }
-        progressFill.requestLayout()
+        if (!::topControls.isInitialized || !::bottomControls.isInitialized) return
+        val alpha = if (visible) 1f else 0f
+        topControls.animate().alpha(alpha).setDuration(160).start()
+        bottomControls.animate().alpha(alpha).setDuration(160).start()
+        topControls.isClickable = visible
+        bottomControls.isClickable = visible
     }
 
     private fun showEpisodePicker() {
-        if (episodes.isEmpty()) return
+        if (episodes.isEmpty() || isFinishing || isDestroyed) return
 
         val dialog = Dialog(this)
-
         val outer = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(10), dp(16), dp(20))
-            background = pill(Color.rgb(18, 21, 28), 24f, true)
+            setPadding(dp(14), dp(12), dp(14), dp(16))
+            background = rounded(Color.rgb(18, 21, 28), 24f)
         }
-
-        val handle = View(this).apply {
-            background = pill(Color.argb(90, 255, 255, 255), 999f, false)
-        }
-
-        outer.addView(
-            handle,
-            LinearLayout.LayoutParams(dp(46), dp(5)).apply {
-                gravity = Gravity.CENTER_HORIZONTAL
-                bottomMargin = dp(16)
-            }
-        )
 
         val header = TextView(this).apply {
-            text = "Episode  •  ${episodes.size} tersedia"
+            text = "Pilih Episode"
             textSize = 18f
             setTextColor(Color.WHITE)
             setTypeface(null, Typeface.BOLD)
-            setPadding(dp(4), 0, dp(4), dp(12))
+            setPadding(dp(6), dp(4), dp(6), dp(12))
         }
         outer.addView(header)
 
@@ -1144,62 +933,47 @@ class ShortsActivity : Activity() {
         val grid = GridLayout(this).apply { columnCount = 4 }
 
         episodes.forEachIndexed { position, episode ->
-            val button = TextView(this).apply {
-                text = "${episode.index}"
-                gravity = Gravity.CENTER
-                textSize = 13f
-                setTypeface(null, Typeface.BOLD)
-                setTextColor(
-                    if (position == currentPosition) Color.BLACK else Color.WHITE
-                )
-                background = if (position == currentPosition) {
-                    pill(Color.WHITE, 12f, false)
-                } else {
-                    pill(Color.rgb(31, 35, 44), 12f, true)
-                }
-                setOnClickListener {
-                    dialog.dismiss()
-                    playEpisode(position)
-                }
-            }
+            val button = compactButton("EP ${episode.index}") {
+                dialog.dismiss()
+                playEpisode(position)
+                showControlsTemporarily()
+            }.apply { alpha = if (position == currentPosition) 1f else 0.72f }
 
-            val params = GridLayout.LayoutParams().apply {
+            grid.addView(button, GridLayout.LayoutParams().apply {
                 width = 0
-                height = dp(48)
+                height = dp(50)
                 columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f)
                 setMargins(dp(3), dp(3), dp(3), dp(3))
-            }
-            grid.addView(button, params)
+            })
         }
 
         scroll.addView(grid)
         outer.addView(
             scroll,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                0,
-                1f
-            )
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
         )
 
         dialog.setContentView(outer)
+        dialog.show()
         dialog.window?.apply {
             setBackgroundDrawableResource(android.R.color.transparent)
-            setDimAmount(0.58f)
-            addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
-            setGravity(Gravity.BOTTOM)
+            setLayout(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                (resources.displayMetrics.heightPixels * 0.72f).toInt()
+            )
         }
+    }
 
-        dialog.setOnDismissListener {
-            hideSystemBars()
-            showControlsTemporarily()
+    private fun compactButton(label: String, action: () -> Unit): TextView {
+        return TextView(this).apply {
+            text = label
+            gravity = Gravity.CENTER
+            textSize = 14f
+            setTextColor(Color.WHITE)
+            background = rounded(Color.argb(205, 25, 29, 37), 16f)
+            setPadding(dp(10), 0, dp(10), 0)
+            setOnClickListener { action() }
         }
-
-        dialog.show()
-        dialog.window?.setLayout(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            (resources.displayMetrics.heightPixels * 0.68f).toInt()
-        )
     }
 
     private fun selectVideoUrl(item: JSONObject): String {
@@ -1208,20 +982,14 @@ class ShortsActivity : Activity() {
         if (result.isBlank()) {
             val streams = item.optJSONArray("streams")
             if (streams != null && streams.length() > 0) {
-                result = streams.optJSONObject(0)
-                    ?.optString("sourceUrl")
-                    .orEmpty()
+                result = streams.optJSONObject(0)?.optString("sourceUrl").orEmpty()
             }
         }
 
-        if (result.isBlank()) {
-            result = item.optString("videoUrl")
-        }
-
+        if (result.isBlank()) result = item.optString("videoUrl")
         if (result.startsWith("http://")) {
             result = "https://" + result.removePrefix("http://")
         }
-
         return result
     }
 
@@ -1231,48 +999,24 @@ class ShortsActivity : Activity() {
         connection.connectTimeout = 15000
         connection.readTimeout = 30000
         connection.setRequestProperty("Accept", "application/json")
-        connection.setRequestProperty(
-            "User-Agent",
-            "ReelShortFloating/5.0 Android"
-        )
+        connection.setRequestProperty("User-Agent", "ReelShortFloating/4.2 Android")
 
         try {
             val code = connection.responseCode
-            val stream = if (code in 200..299) {
-                connection.inputStream
-            } else {
-                connection.errorStream
-            }
-
-            val body = stream
-                ?.bufferedReader()
-                ?.use { it.readText() }
-                ?: ""
-
-            if (code !in 200..299) {
-                throw Exception("HTTP $code")
-            }
-
+            val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+            val body = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
+            if (code !in 200..299) throw Exception("HTTP $code")
             return body
         } finally {
             connection.disconnect()
         }
     }
 
-    private fun pill(
-        color: Int,
-        radiusDp: Float,
-        stroke: Boolean
-    ): GradientDrawable {
+    private fun rounded(color: Int, radiusDp: Float): GradientDrawable {
         return GradientDrawable().apply {
             setColor(color)
             cornerRadius = dp(radiusDp).toFloat()
-            if (stroke) {
-                setStroke(
-                    dp(1),
-                    Color.argb(28, 255, 255, 255)
-                )
-            }
+            setStroke(dp(1), Color.argb(25, 255, 255, 255))
         }
     }
 
@@ -1282,9 +1026,9 @@ class ShortsActivity : Activity() {
     private fun dp(value: Float): Int =
         (value * resources.displayMetrics.density).toInt()
 
-    override fun onWindowFocusChanged(hasFocus: Boolean) {
-        super.onWindowFocusChanged(hasFocus)
-        if (hasFocus) hideSystemBars()
+    override fun onPause() {
+        super.onPause()
+        if (::player.isInitialized) player.pause()
     }
 
     override fun onDestroy() {
@@ -1433,10 +1177,8 @@ class FloatingPlayerService : Service() {
                 menuPanel?.visibility !=
                 View.VISIBLE
             ) {
-                dotsView?.animate()
-                    ?.alpha(0f)
-                    ?.setDuration(180)
-                    ?.start()
+                dotsView?.alpha =
+                    0f
             }
         }
 
@@ -1681,44 +1423,98 @@ class FloatingPlayerService : Service() {
 
     private fun createExpandedWindow() {
 
-        val metrics = resources.displayMetrics
-        val screenWidth = metrics.widthPixels
-        val screenHeight = metrics.heightPixels
+        val metrics =
+            resources.displayMetrics
+
+        val screenWidth =
+            metrics.widthPixels
+
+        val screenHeight =
+            metrics.heightPixels
 
         val width =
-            if (screenWidth > screenHeight) {
-                (screenWidth * 0.36f).toInt()
+            if (
+                screenWidth >
+                screenHeight
+            ) {
+                (
+                    screenWidth *
+                    0.38f
+                ).toInt()
             } else {
-                (screenWidth * 0.86f).toInt()
+                (
+                    screenWidth *
+                    0.88f
+                ).toInt()
             }
 
-        val height = (width * 9f / 16f).toInt()
+        /*
+         * Cuma bar ⋯ tipis + video.
+         * Tidak ada title, EP bar, atau resize icon.
+         */
+        val height =
+            (
+                width *
+                9f /
+                16f
+            ).toInt() +
+            dp(14)
 
-        expandedParams = WindowManager.LayoutParams(
-            width,
-            height,
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-            PixelFormat.TRANSLUCENT
-        ).apply {
-            gravity = Gravity.TOP or Gravity.START
-            x = dp(20)
-            y = dp(80)
-        }
+        expandedParams =
+            WindowManager.LayoutParams(
+                width,
+                height,
 
-        val root = FrameLayout(this)
-        expandedRoot = root
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
 
-        val card = FrameLayout(this).apply {
-            background = rounded(
-                Color.rgb(7, 8, 11),
-                20f
-            )
-            elevation = dp(10).toFloat()
-            clipToOutline = true
-        }
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+
+                PixelFormat.TRANSLUCENT
+            ).apply {
+
+                gravity =
+                    Gravity.TOP or
+                    Gravity.START
+
+                x =
+                    dp(20)
+
+                y =
+                    dp(80)
+            }
+
+
+        val root =
+            FrameLayout(this)
+
+        expandedRoot =
+            root
+
+
+        val card =
+            LinearLayout(this).apply {
+
+                orientation =
+                    LinearLayout.VERTICAL
+
+                clipToOutline =
+                    true
+
+                elevation =
+                    dp(8).toFloat()
+
+                background =
+                    rounded(
+                        Color.rgb(
+                            10,
+                            10,
+                            10
+                        ),
+                        18f
+                    )
+            }
 
         root.addView(
             card,
@@ -1728,29 +1524,89 @@ class FloatingPlayerService : Service() {
             )
         )
 
-        val playerContainer = FrameLayout(this).apply {
-            setBackgroundColor(Color.BLACK)
-        }
+
+        /*
+         * Tiga titik ini sekaligus:
+         * - drag handle
+         * - tombol popup menu
+         * - auto-hide control
+         */
+        val dots =
+            TextView(this).apply {
+
+                text =
+                    "⋯"
+
+                textSize =
+                    18f
+
+                gravity =
+                    Gravity.CENTER
+
+                setTextColor(
+                    Color.WHITE
+                )
+
+                alpha =
+                    1f
+            }
+
+        dotsView =
+            dots
 
         card.addView(
-            playerContainer,
-            FrameLayout.LayoutParams(
+            dots,
+            LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
+                dp(14)
             )
         )
 
-        playerView = PlayerView(this).apply {
-            player = this@FloatingPlayerService.player
-            useController = false
-            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-            setBackgroundColor(Color.BLACK)
+        enableDotsDragAndMenu(
+            dots
+        )
 
-            setOnClickListener {
-                togglePlayPause()
-                showDotsTemporarily()
+
+        val playerContainer =
+            FrameLayout(this).apply {
+                setBackgroundColor(
+                    Color.BLACK
+                )
             }
-        }
+
+        card.addView(
+            playerContainer,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                0,
+                1f
+            )
+        )
+
+
+        playerView =
+            PlayerView(this).apply {
+
+                player =
+                    this@FloatingPlayerService.player
+
+                useController =
+                    false
+
+                resizeMode =
+                    AspectRatioFrameLayout.RESIZE_MODE_FIT
+
+                setBackgroundColor(
+                    Color.BLACK
+                )
+
+                setOnClickListener {
+
+                    togglePlayPause()
+
+                    showDotsTemporarily()
+                }
+            }
 
         playerContainer.addView(
             playerView,
@@ -1760,13 +1616,32 @@ class FloatingPlayerService : Service() {
             )
         )
 
-        loadingText = TextView(this).apply {
-            text = "Memuat..."
-            textSize = 12f
-            gravity = Gravity.CENTER
-            setTextColor(Color.WHITE)
-            setBackgroundColor(Color.argb(48, 0, 0, 0))
-        }
+
+        loadingText =
+            TextView(this).apply {
+
+                text =
+                    "Memuat..."
+
+                textSize =
+                    12f
+
+                gravity =
+                    Gravity.CENTER
+
+                setTextColor(
+                    Color.WHITE
+                )
+
+                setBackgroundColor(
+                    Color.argb(
+                        70,
+                        0,
+                        0,
+                        0
+                    )
+                )
+            }
 
         playerContainer.addView(
             loadingText,
@@ -1776,57 +1651,46 @@ class FloatingPlayerService : Service() {
             )
         )
 
+
         /*
-         * Premium mode: ⋯ mengambang di atas video.
-         * Tidak ada lagi bar hitam permanen.
+         * Resize tetap ada tapi 100% invisible.
+         * Drag pojok kanan bawah.
          */
-        val dots = TextView(this).apply {
-            text = "⋯"
-            textSize = 20f
-            gravity = Gravity.CENTER
-            setTextColor(Color.WHITE)
-            background = rounded(
-                Color.argb(145, 15, 17, 22),
-                999f
-            )
-            elevation = dp(6).toFloat()
-            alpha = 1f
-        }
-
-        dotsView = dots
-
-        card.addView(
-            dots,
-            FrameLayout.LayoutParams(
-                dp(52),
-                dp(26),
-                Gravity.TOP or Gravity.CENTER_HORIZONTAL
-            ).apply {
-                topMargin = dp(6)
+        val resize =
+            View(this).apply {
+                setBackgroundColor(
+                    Color.TRANSPARENT
+                )
             }
-        )
 
-        enableDotsDragAndMenu(dots)
-
-        val resize = View(this).apply {
-            setBackgroundColor(Color.TRANSPARENT)
-        }
-
-        resizeZone = resize
+        resizeZone =
+            resize
 
         root.addView(
             resize,
             FrameLayout.LayoutParams(
-                dp(38),
-                dp(38),
-                Gravity.BOTTOM or Gravity.END
+                dp(82),
+                dp(82),
+                Gravity.BOTTOM or
+                    Gravity.END
             )
         )
 
-        enableResize(resize)
-        createMenu(root)
+        enableResize(
+            resize
+        )
 
-        wm.addView(root, expandedParams)
+
+        createMenu(
+            root
+        )
+
+
+        wm.addView(
+            root,
+            expandedParams
+        )
+
         showDotsTemporarily()
     }
 
@@ -1843,14 +1707,12 @@ class FloatingPlayerService : Service() {
             autoHideDots
         )
 
-        dotsView?.animate()
-            ?.alpha(1f)
-            ?.setDuration(120)
-            ?.start()
+        dotsView?.alpha =
+            1f
 
         handler.postDelayed(
             autoHideDots,
-            1800
+            2200
         )
     }
 
@@ -2033,13 +1895,12 @@ class FloatingPlayerService : Service() {
 
                 background =
                     rounded(
-                        Color.argb(
-                            238,
-                            24,
-                            27,
-                            34
+                        Color.rgb(
+                            38,
+                            38,
+                            38
                         ),
-                        18f
+                        14f
                     )
 
                 setPadding(
@@ -2090,13 +1951,13 @@ class FloatingPlayerService : Service() {
         parent.addView(
             menu,
             FrameLayout.LayoutParams(
-                dp(192),
+                dp(205),
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 Gravity.TOP or
                     Gravity.CENTER_HORIZONTAL
             ).apply {
                 topMargin =
-                    dp(36)
+                    dp(15)
             }
         )
 
@@ -2139,7 +2000,7 @@ class FloatingPlayerService : Service() {
             layoutParams =
                 LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
-                    dp(42)
+                    dp(44)
                 )
         }
     }
@@ -2275,50 +2136,100 @@ class FloatingPlayerService : Service() {
 
     private fun createBubbleWindow() {
 
-        bubbleParams = WindowManager.LayoutParams(
-            dp(50),
-            dp(50),
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
-            PixelFormat.TRANSLUCENT
-        ).apply {
-            gravity = Gravity.TOP or Gravity.START
-            x = dp(20)
-            y = dp(120)
-        }
+        bubbleParams =
+            WindowManager.LayoutParams(
+                dp(56),
+                dp(56),
 
-        val root = FrameLayout(this)
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
 
-        val icon = TextView(this).apply {
-            text = "▶"
-            textSize = 17f
-            gravity = Gravity.CENTER
-            setTextColor(Color.WHITE)
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(Color.argb(244, 20, 23, 30))
-                setStroke(
-                    dp(1),
-                    Color.argb(50, 255, 255, 255)
-                )
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+
+                PixelFormat.TRANSLUCENT
+            ).apply {
+
+                gravity =
+                    Gravity.TOP or
+                    Gravity.START
+
+                x =
+                    dp(20)
+
+                y =
+                    dp(120)
             }
-            elevation = dp(8).toFloat()
-        }
+
+
+        val root =
+            FrameLayout(this)
+
+
+        val icon =
+            TextView(this).apply {
+
+                text =
+                    "R"
+
+                textSize =
+                    20f
+
+                gravity =
+                    Gravity.CENTER
+
+                setTextColor(
+                    Color.WHITE
+                )
+
+                background =
+                    GradientDrawable().apply {
+
+                        shape =
+                            GradientDrawable.OVAL
+
+                        setColor(
+                            Color.rgb(
+                                24,
+                                24,
+                                24
+                            )
+                        )
+
+                        setStroke(
+                            dp(1),
+                            Color.rgb(
+                                80,
+                                80,
+                                80
+                            )
+                        )
+                    }
+            }
+
 
         root.addView(
             icon,
             FrameLayout.LayoutParams(
-                dp(48),
-                dp(48),
-                Gravity.CENTER
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
             )
         )
 
-        root.visibility = View.GONE
-        enableBubbleDrag(root)
-        bubbleRoot = root
-        wm.addView(root, bubbleParams)
+
+        root.visibility =
+            View.GONE
+
+        enableBubbleDrag(
+            root
+        )
+
+        bubbleRoot =
+            root
+
+        wm.addView(
+            root,
+            bubbleParams
+        )
     }
 
 
@@ -2495,123 +2406,73 @@ class FloatingPlayerService : Service() {
     private fun enableResize(
         target: View
     ) {
-
         target.setOnTouchListener(
             object : View.OnTouchListener {
 
-                var startWidth =
-                    0
-
-                var startHeight =
-                    0
-
-                var touchX =
-                    0f
-
-                var touchY =
-                    0f
-
+                var startWidth = 0
+                var touchX = 0f
+                var touchY = 0f
 
                 override fun onTouch(
                     view: View?,
                     event: MotionEvent
                 ): Boolean {
 
-                    if (fullscreen) {
-                        return false
-                    }
+                    if (fullscreen) return true
 
-                    val params =
-                        expandedParams
-                            ?: return false
+                    val params = expandedParams ?: return false
 
-                    when (
-                        event.action
-                    ) {
-
+                    when (event.actionMasked) {
                         MotionEvent.ACTION_DOWN -> {
-
-                            startWidth =
-                                params.width
-
-                            startHeight =
-                                params.height
-
-                            touchX =
-                                event.rawX
-
-                            touchY =
-                                event.rawY
-
+                            startWidth = params.width
+                            touchX = event.rawX
+                            touchY = event.rawY
+                            handler.removeCallbacks(autoHideDots)
                             return true
                         }
 
-
                         MotionEvent.ACTION_MOVE -> {
+                            val dx = event.rawX - touchX
+                            val dy = event.rawY - touchY
 
-                            val metrics =
-                                resources.displayMetrics
-
-                            val dx =
-                                (
-                                    event.rawX -
-                                    touchX
-                                ).toInt()
-
-                            val dy =
-                                (
-                                    event.rawY -
-                                    touchY
-                                ).toInt()
-
-                            val minWidth =
-                                dp(220)
-
-                            val minHeight =
-                                dp(155)
-
-                            val maxWidth =
-                                (
-                                    metrics.widthPixels -
-                                    params.x
-                                ).coerceAtLeast(
-                                    minWidth
-                                )
-
-                            val maxHeight =
-                                (
-                                    metrics.heightPixels -
-                                    params.y
-                                ).coerceAtLeast(
-                                    minHeight
-                                )
-
-                            params.width =
-                                (
-                                    startWidth +
-                                    dx
-                                ).coerceIn(
-                                    minWidth,
-                                    maxWidth
-                                )
-
-                            params.height =
-                                (
-                                    startHeight +
-                                    dy
-                                ).coerceIn(
-                                    minHeight,
-                                    maxHeight
-                                )
-
-                            expandedRoot?.let {
-
-                                wm.updateViewLayout(
-                                    it,
-                                    params
-                                )
+                            val widthDelta = if (abs(dx) >= abs(dy)) {
+                                dx.toInt()
+                            } else {
+                                (dy * 16f / 9f).toInt()
                             }
 
+                            val metrics = resources.displayMetrics
+                            val minWidth = dp(210)
+                            val maxWidth = (metrics.widthPixels - params.x)
+                                .coerceAtLeast(minWidth)
+
+                            var newWidth = (startWidth + widthDelta)
+                                .coerceIn(minWidth, maxWidth)
+
+                            val chromeHeight = dp(14)
+                            var newHeight = (newWidth * 9f / 16f).toInt() + chromeHeight
+                            val maxHeight = (metrics.heightPixels - params.y)
+                                .coerceAtLeast(dp(150))
+
+                            if (newHeight > maxHeight) {
+                                newHeight = maxHeight
+                                newWidth = (((newHeight - chromeHeight) * 16f) / 9f)
+                                    .toInt()
+                                    .coerceIn(minWidth, maxWidth)
+                            }
+
+                            params.width = newWidth
+                            params.height = newHeight
+
+                            expandedRoot?.let {
+                                wm.updateViewLayout(it, params)
+                            }
+                            return true
+                        }
+
+                        MotionEvent.ACTION_UP,
+                        MotionEvent.ACTION_CANCEL -> {
+                            showDotsTemporarily()
                             return true
                         }
                     }
@@ -2920,7 +2781,7 @@ class FloatingPlayerService : Service() {
 
         connection.setRequestProperty(
             "User-Agent",
-            "ReelShortFloating/5.0 Android"
+            "ReelShortFloating/4.0 Android"
         )
 
         try {
@@ -2973,11 +2834,6 @@ class FloatingPlayerService : Service() {
             cornerRadius =
                 dp(radiusDp)
                     .toFloat()
-
-            setStroke(
-                dp(1),
-                Color.argb(28, 255, 255, 255)
-            )
         }
     }
 
@@ -3952,138 +3808,6 @@ button {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
-
-/* =========================
-   MODE PICKER / PREMIUM HOME
-========================= */
-
-.mode-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 299;
-  background: rgba(0, 0, 0, 0.58);
-  backdrop-filter: blur(7px);
-}
-
-.mode-sheet {
-  position: fixed;
-  z-index: 300;
-  left: 50%;
-  bottom: 0;
-  width: min(100%, 560px);
-  transform: translate(-50%, 110%);
-  transition: transform 0.28s cubic-bezier(.2,.8,.2,1);
-  border: 1px solid rgba(255,255,255,0.08);
-  border-bottom: 0;
-  border-radius: 28px 28px 0 0;
-  padding: 10px 16px max(22px, env(safe-area-inset-bottom));
-  background:
-    linear-gradient(180deg, rgba(27,32,42,0.98), rgba(12,15,21,0.99));
-  box-shadow: 0 -24px 60px rgba(0,0,0,0.48);
-}
-
-.mode-sheet.open {
-  transform: translate(-50%, 0);
-}
-
-.mode-handle {
-  width: 44px;
-  height: 5px;
-  margin: 2px auto 16px;
-  border-radius: 999px;
-  background: rgba(255,255,255,0.25);
-}
-
-.mode-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 14px;
-}
-
-.mode-header h2 {
-  margin: 0;
-  font-size: 21px;
-  letter-spacing: -0.2px;
-}
-
-.mode-header p {
-  margin: 5px 0 0;
-  color: var(--muted);
-  font-size: 13px;
-  max-width: 360px;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.mode-close {
-  width: 40px;
-  height: 40px;
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 999px;
-  background: rgba(255,255,255,0.06);
-  color: white;
-  font-size: 18px;
-}
-
-.mode-option {
-  width: 100%;
-  min-height: 82px;
-  margin-top: 10px;
-  padding: 14px;
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 20px;
-  background:
-    linear-gradient(135deg, rgba(255,255,255,0.075), rgba(255,255,255,0.025));
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  text-align: left;
-  box-shadow: 0 10px 28px rgba(0,0,0,0.18);
-}
-
-.mode-option:active,
-.movie-card:active,
-.search-box button:active {
-  transform: scale(0.985);
-}
-
-.mode-icon {
-  width: 50px;
-  height: 50px;
-  flex: 0 0 50px;
-  display: grid;
-  place-items: center;
-  border: 1px solid rgba(255,255,255,0.1);
-  border-radius: 16px;
-  background: rgba(255,255,255,0.08);
-  font-size: 24px;
-}
-
-.mode-option strong {
-  display: block;
-  font-size: 15px;
-  color: #fff;
-}
-
-.mode-option small {
-  display: block;
-  margin-top: 5px;
-  color: var(--muted);
-  line-height: 1.4;
-  font-size: 12px;
-}
-
-.movie-card {
-  transition: transform 0.16s ease, border-color 0.16s ease;
-}
-
-.movie-card:active {
-  border-color: rgba(255,255,255,0.18);
-}
-
 __STYLE_CSS__
 
 cat > app/src/main/assets/script.js <<'__SCRIPT_JS__'
@@ -6087,19 +5811,19 @@ echo "=========================================="
 echo " PROJECT BERHASIL DIGENERATE"
 echo "=========================================="
 echo
-echo "Mode 1 : Shorts-style immersive player"
-echo "Mode 2 : Premium floating overlay"
+echo "Mode 1 : YouTube Shorts native"
+echo "Mode 2 : Floating overlay"
 echo
 echo "Floating:"
 echo "  - ⋯ auto-hide"
 echo "  - drag dari area ⋯"
 echo "  - popup fullscreen/minimize/tutup"
 echo "  - invisible resize kanan bawah"
-echo "  - minimize jadi bubble play"
+echo "  - minimize jadi bubble R"
 echo "  - auto-next episode"
 echo
 echo "Home:"
-echo "  - WebView home modern berbasis HTML/CSS"
+echo "  - WebView pakai UI HTML/CSS lama"
 echo "  - tap drama -> pilih mode"
 echo
 echo "Files:"
