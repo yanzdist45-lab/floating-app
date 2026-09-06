@@ -846,8 +846,8 @@ class ShortsActivity : Activity() {
                 runOnUiThread {
                     if (isFinishing || isDestroyed) return@runOnUiThread
                     loadingText.visibility = View.VISIBLE
-                    loadingText.text = "Gagal memuat episode
-${error.message.orEmpty()}"
+                    loadingText.text =
+                        "Gagal memuat episode: ${error.message.orEmpty()}"
                 }
             }
         }.start()
