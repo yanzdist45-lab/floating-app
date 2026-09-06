@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1, viewport-fit=cover"
+  >
+
+  <title>ReelShort Player</title>
+
+  <link rel="stylesheet" href="style.css">
+
+</head>
+
+<body>
+
+  <!-- =========================
+       HOME / SEARCH
+  ========================== -->
+
+  <main id="homePage" class="home-page">
+
+    <header class="home-header">
+      <h1>ReelShort</h1>
+
+      <div class="search-box">
+        <input
+          id="searchInput"
+          type="search"
+          placeholder="Cari drama..."
+          autocomplete="off"
+        >
+
+        <button id="searchButton">
+          Cari
+        </button>
+      </div>
+    </header>
+
+    <div class="home-content">
+
+      <div id="searchStatus" class="search-status">
+        Cari drama yang mau ditonton.
+      </div>
+
+      <div id="searchResults" class="movie-grid"></div>
+
+    </div>
+
+  </main>
+
+
+  <!-- =========================
+       SHORTS PLAYER
+  ========================== -->
+
+  <main id="playerPage" class="player-page hidden">
+
+    <!-- TOP -->
+
+    <div class="player-top">
+
+      <button
+        id="backButton"
+        class="icon-button"
+        aria-label="Kembali"
+      >
+        ←
+      </button>
+
+      <div class="top-title">
+
+        <div id="playerTitle" class="player-title">
+          ReelShort
+        </div>
+
+        <div id="playerEpisodeText" class="player-subtitle">
+          Episode 1
+        </div>
+
+      </div>
+
+    </div>
+
+
+    <!-- VIDEO -->
+
+    <section id="videoStage" class="video-stage">
+
+      <video
+        id="video"
+        playsinline
+        preload="metadata"
+      ></video>
+
+
+      <!-- LOADING -->
+
+      <div id="loading" class="loading hidden">
+        <div class="spinner"></div>
+      </div>
+
+
+      <!-- ERROR -->
+
+      <div id="videoError" class="video-error hidden">
+        Gagal memuat video
+      </div>
+
+
+      <!-- TAP PLAY -->
+
+      <button
+        id="centerPlay"
+        class="center-play hidden"
+        aria-label="Play"
+      >
+        ▶
+      </button>
+
+    </section>
+
+
+    <!-- FULLSCREEN -->
+
+    <button
+      id="fullscreenButton"
+      class="fullscreen-button"
+    >
+      <span>⛶</span>
+      <span>Layar penuh</span>
+    </button>
+
+
+    <!-- PLAYER BOTTOM -->
+
+    <div class="player-bottom">
+
+      <!-- PROGRESS -->
+
+      <div
+        id="progressArea"
+        class="progress-area"
+      >
+
+        <input
+          id="progress"
+          class="progress"
+          type="range"
+          min="0"
+          max="1000"
+          value="0"
+        >
+
+        <div class="time-row">
+
+          <span id="currentTime">
+            00:00
+          </span>
+
+          <span id="durationTime">
+            00:00
+          </span>
+
+        </div>
+
+      </div>
+
+
+      <!-- CONTROLS -->
+
+      <div class="mini-controls">
+
+        <button
+          id="previousButton"
+          class="mini-button"
+        >
+          ‹
+        </button>
+
+        <button
+          id="playPauseButton"
+          class="play-button"
+        >
+          ▶
+        </button>
+
+        <button
+          id="nextButton"
+          class="mini-button"
+        >
+          ›
+        </button>
+
+      </div>
+
+
+      <!-- EPISODE BAR -->
+
+      <button
+        id="episodeBar"
+        class="episode-bar"
+      >
+
+        <div class="episode-left">
+
+          <span class="episode-icon">
+            ▰
+          </span>
+
+          <strong id="episodePosition">
+            EP.1/EP.1
+          </strong>
+
+        </div>
+
+        <span
+          id="episodeArrow"
+          class="episode-arrow"
+        >
+          ⌃
+        </span>
+
+      </button>
+
+    </div>
+
+
+    <!-- SWIPE INDICATOR -->
+
+    <div id="swipeIndicator" class="swipe-indicator">
+      Swipe ↑ episode berikutnya
+    </div>
+
+  </main>
+
+
+  <!-- =========================
+       EPISODE SHEET
+  ========================== -->
+
+  <div
+    id="episodeOverlay"
+    class="episode-overlay hidden"
+  ></div>
+
+  <section
+    id="episodeSheet"
+    class="episode-sheet"
+  >
+
+    <div class="sheet-handle"></div>
+
+    <div class="sheet-header">
+
+      <div>
+        <h2>Episode</h2>
+
+        <span id="sheetEpisodeCount">
+          0 episode
+        </span>
+      </div>
+
+      <button
+        id="closeSheetButton"
+        class="close-sheet"
+      >
+        ✕
+      </button>
+
+    </div>
+
+    <div
+      id="episodeList"
+      class="episode-list"
+    ></div>
+
+  </section>
+
+
+  <!-- =========================
+       MODE PICKER
+  ========================== -->
+
+  <div
+    id="modeOverlay"
+    class="mode-overlay hidden"
+  ></div>
+
+  <section
+    id="modeSheet"
+    class="mode-sheet"
+    aria-hidden="true"
+  >
+    <div class="mode-handle"></div>
+
+    <div class="mode-header">
+      <div>
+        <h2>Pilih mode nonton</h2>
+        <p id="modeBookTitle">Drama</p>
+      </div>
+
+      <button
+        id="closeModeButton"
+        class="mode-close"
+        type="button"
+        aria-label="Tutup"
+      >
+        ✕
+      </button>
+    </div>
+
+    <button
+      id="shortsModeButton"
+      class="mode-option"
+      type="button"
+    >
+      <span class="mode-icon">▯</span>
+      <span>
+        <strong>YouTube Shorts</strong>
+        <small>Fullscreen, swipe atas/bawah buat pindah episode.</small>
+      </span>
+    </button>
+
+    <button
+      id="floatingModeButton"
+      class="mode-option"
+      type="button"
+    >
+      <span class="mode-icon">◫</span>
+      <span>
+        <strong>Floating window</strong>
+        <small>Nonton sambil buka game, bisa drag, resize, dan minimize.</small>
+      </span>
+    </button>
+  </section>
+
+  <script src="script.js"></script>
+
+</body>
+</html>

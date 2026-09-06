@@ -11,11 +11,11 @@
         </item>
 
         <item name="android:windowBackground">
-            #0A0A0A
+            #000000
         </item>
 
         <item name="android:statusBarColor">
-            #0A0A0A
+            #000000
         </item>
 
         <item name="android:navigationBarColor">

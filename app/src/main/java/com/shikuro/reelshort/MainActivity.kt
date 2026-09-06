@@ -2,790 +2,246 @@ package com.shikuro.reelshort
 
 import android.app.Activity
 import android.content.Intent
-import android.graphics.Color
-import android.graphics.Typeface
-import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
-import android.view.Gravity
-import android.view.ViewGroup
-import android.view.inputmethod.EditorInfo
-import android.widget.*
+import android.webkit.JavascriptInterface
+import android.webkit.WebResourceRequest
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
+import androidx.webkit.WebViewAssetLoader
 
 class MainActivity : Activity() {
 
-    private val api =
-        "https://reelshort.vercel.app"
+    companion object {
+        private const val PENDING_BOOK_ID = "pending_book_id"
+        private const val PENDING_BOOK_TITLE = "pending_book_title"
+    }
 
-    private lateinit var root: LinearLayout
+    private lateinit var webView: WebView
 
-    private var screenCreated =
-        false
-
-
-    data class Book(
-        val id: String,
-        val title: String,
-        val chapters: Int,
-        val theme: String
-    )
-
+    private val prefs by lazy {
+        getSharedPreferences("main", MODE_PRIVATE)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        if (!Settings.canDrawOverlays(this)) {
-            requestOverlayPermission()
-        } else {
-            showSearchScreen()
-        }
-    }
+        webView = WebView(this)
 
+        webView.settings.apply {
+            javaScriptEnabled = true
+            domStorageEnabled = true
+            mediaPlaybackRequiresUserGesture = false
+            allowContentAccess = false
+            allowFileAccess = false
+        }
+
+        val assetLoader =
+            WebViewAssetLoader.Builder()
+                .addPathHandler(
+                    "/assets/",
+                    WebViewAssetLoader.AssetsPathHandler(this)
+                )
+                .build()
+
+        webView.webViewClient =
+            object : WebViewClient() {
+
+                override fun shouldInterceptRequest(
+                    view: WebView?,
+                    request: WebResourceRequest
+                ) =
+                    assetLoader.shouldInterceptRequest(
+                        request.url
+                    )
+            }
+
+        webView.addJavascriptInterface(
+            AndroidBridge(),
+            "AndroidApp"
+        )
+
+        setContentView(webView)
+
+        webView.loadUrl(
+            "https://appassets.androidplatform.net/assets/index.html"
+        )
+    }
 
     override fun onResume() {
         super.onResume()
 
-        if (
-            Settings.canDrawOverlays(this) &&
-            !screenCreated
-        ) {
-            showSearchScreen()
-        }
-    }
-
-
-    private fun requestOverlayPermission() {
-
-        val layout =
-            LinearLayout(this).apply {
-
-                orientation =
-                    LinearLayout.VERTICAL
-
-                gravity =
-                    Gravity.CENTER
-
-                setPadding(
-                    dp(25),
-                    dp(25),
-                    dp(25),
-                    dp(25)
-                )
-
-                setBackgroundColor(
-                    Color.rgb(
-                        10,
-                        10,
-                        10
-                    )
-                )
-            }
-
+        val bookId =
+            prefs.getString(
+                PENDING_BOOK_ID,
+                null
+            )
 
         val title =
-            TextView(this).apply {
-
-                text =
-                    "Izin Floating Window"
-
-                textSize =
-                    24f
-
-                gravity =
-                    Gravity.CENTER
-
-                setTextColor(
-                    Color.WHITE
-                )
-
-                setTypeface(
-                    null,
-                    Typeface.BOLD
-                )
-            }
-
-
-        val description =
-            TextView(this).apply {
-
-                text =
-                    "ReelShort butuh izin tampil di atas aplikasi lain supaya player bisa nongol di atas game."
-
-                textSize =
-                    15f
-
-                gravity =
-                    Gravity.CENTER
-
-                setTextColor(
-                    Color.LTGRAY
-                )
-
-                setPadding(
-                    0,
-                    dp(15),
-                    0,
-                    dp(20)
-                )
-            }
-
-
-        val button =
-            Button(this).apply {
-
-                text =
-                    "IZINKAN FLOATING WINDOW"
-
-                setOnClickListener {
-
-                    val intent =
-                        Intent(
-                            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                            Uri.parse(
-                                "package:$packageName"
-                            )
-                        )
-
-                    startActivity(
-                        intent
-                    )
-                }
-            }
-
-
-        layout.addView(
-            title
-        )
-
-        layout.addView(
-            description
-        )
-
-        layout.addView(
-            button
-        )
-
-
-        setContentView(
-            layout
-        )
-    }
-
-
-    private fun showSearchScreen() {
-
-        screenCreated =
-            true
-
-
-        root =
-            LinearLayout(this).apply {
-
-                orientation =
-                    LinearLayout.VERTICAL
-
-                setPadding(
-                    dp(14),
-                    dp(18),
-                    dp(14),
-                    dp(14)
-                )
-
-                setBackgroundColor(
-                    Color.rgb(
-                        10,
-                        10,
-                        10
-                    )
-                )
-            }
-
-
-        setContentView(
-            root
-        )
-
-
-        val logo =
-            TextView(this).apply {
-
-                text =
-                    "ReelShort Floating"
-
-                textSize =
-                    25f
-
-                setTextColor(
-                    Color.WHITE
-                )
-
-                setTypeface(
-                    null,
-                    Typeface.BOLD
-                )
-
-                setPadding(
-                    dp(4),
-                    dp(4),
-                    dp(4),
-                    dp(16)
-                )
-            }
-
-
-        root.addView(
-            logo
-        )
-
-
-        val row =
-            LinearLayout(this).apply {
-
-                orientation =
-                    LinearLayout.HORIZONTAL
-            }
-
-
-        val input =
-            EditText(this).apply {
-
-                hint =
-                    "Cari drama..."
-
-                setSingleLine()
-
-                imeOptions =
-                    EditorInfo.IME_ACTION_SEARCH
-
-                textSize =
-                    16f
-
-                setTextColor(
-                    Color.WHITE
-                )
-
-                setHintTextColor(
-                    Color.GRAY
-                )
-
-                setPadding(
-                    dp(14),
-                    0,
-                    dp(14),
-                    0
-                )
-
-                background =
-                    rounded(
-                        Color.rgb(
-                            27,
-                            27,
-                            27
-                        ),
-                        12f
-                    )
-            }
-
-
-        row.addView(
-            input,
-            LinearLayout.LayoutParams(
-                0,
-                dp(52),
-                1f
+            prefs.getString(
+                PENDING_BOOK_TITLE,
+                ""
             )
-        )
+                .orEmpty()
 
+        if (
+            bookId != null &&
+            Settings.canDrawOverlays(this)
+        ) {
+            prefs.edit()
+                .remove(PENDING_BOOK_ID)
+                .remove(PENDING_BOOK_TITLE)
+                .apply()
 
-        val search =
-            Button(this).apply {
-                text = "Cari"
-            }
-
-
-        val searchParams =
-            LinearLayout.LayoutParams(
-                dp(85),
-                dp(52)
+            startFloatingService(
+                bookId,
+                title
             )
-
-
-        searchParams.marginStart =
-            dp(8)
-
-
-        row.addView(
-            search,
-            searchParams
-        )
-
-
-        root.addView(
-            row
-        )
-
-
-        val status =
-            TextView(this).apply {
-
-                text =
-                    "Cari drama lalu tap hasilnya."
-
-                textSize =
-                    13f
-
-                setTextColor(
-                    Color.GRAY
-                )
-
-                setPadding(
-                    dp(3),
-                    dp(15),
-                    dp(3),
-                    dp(12)
-                )
-            }
-
-
-        root.addView(
-            status
-        )
-
-
-        val scroll =
-            ScrollView(this)
-
-
-        val results =
-            LinearLayout(this).apply {
-                orientation =
-                    LinearLayout.VERTICAL
-            }
-
-
-        scroll.addView(
-            results
-        )
-
-
-        root.addView(
-            scroll,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                0,
-                1f
-            )
-        )
-
-
-        fun performSearch() {
-
-            val keyword =
-                input.text
-                    .toString()
-                    .trim()
-
-
-            if (
-                keyword.isEmpty()
-            ) {
-                return
-            }
-
-
-            status.text =
-                "Mencari..."
-
-
-            results.removeAllViews()
-
-
-            searchBooks(
-                keyword,
-                status,
-                results
-            )
-        }
-
-
-        search.setOnClickListener {
-            performSearch()
-        }
-
-
-        input.setOnEditorActionListener {
-                _,
-                action,
-                _ ->
-
-            if (
-                action ==
-                EditorInfo.IME_ACTION_SEARCH
-            ) {
-
-                performSearch()
-
-                true
-
-            } else {
-
-                false
-
-            }
         }
     }
 
+    inner class AndroidBridge {
 
-    private fun searchBooks(
-        keyword: String,
-        status: TextView,
-        results: LinearLayout
-    ) {
-
-        Thread {
-
-            try {
-
+        @JavascriptInterface
+        fun searchBooks(
+            keyword: String
+        ): String {
+            return try {
                 val encoded =
                     URLEncoder.encode(
                         keyword,
                         "UTF-8"
                     )
 
-
-                val response =
-                    httpGet(
-                        "$api/search?lang=in&keyword=$encoded"
+                httpGet(
+                    "https://reelshort.vercel.app/search?lang=in&keyword=$encoded"
+                )
+            } catch (
+                error: Exception
+            ) {
+                JSONObject()
+                    .put("ok", false)
+                    .put(
+                        "message",
+                        error.message ?: "Search gagal"
                     )
-
-
-                val json =
-                    JSONObject(
-                        response
+                    .put(
+                        "items",
+                        org.json.JSONArray()
                     )
+                    .toString()
+            }
+        }
 
+        @JavascriptInterface
+        fun startShorts(
+            bookId: String,
+            title: String
+        ) {
+            runOnUiThread {
+                if (bookId.isBlank()) return@runOnUiThread
+
+                startActivity(
+                    Intent(
+                        this@MainActivity,
+                        ShortsActivity::class.java
+                    ).apply {
+                        putExtra(
+                            ShortsActivity.EXTRA_BOOK_ID,
+                            bookId
+                        )
+
+                        putExtra(
+                            ShortsActivity.EXTRA_BOOK_TITLE,
+                            title
+                        )
+                    }
+                )
+            }
+        }
+
+        @JavascriptInterface
+        fun startFloating(
+            bookId: String,
+            title: String
+        ) {
+            runOnUiThread {
+                if (bookId.isBlank()) return@runOnUiThread
 
                 if (
-                    !json.optBoolean(
-                        "ok"
+                    Settings.canDrawOverlays(
+                        this@MainActivity
                     )
                 ) {
-
-                    throw Exception(
-                        "API search gagal"
+                    startFloatingService(
+                        bookId,
+                        title
                     )
-                }
-
-
-                val items =
-                    json.getJSONArray(
-                        "items"
-                    )
-
-
-                val books =
-                    mutableListOf<Book>()
-
-
-                for (
-                    i in 0 until items.length()
-                ) {
-
-                    val item =
-                        items.getJSONObject(
-                            i
+                } else {
+                    prefs.edit()
+                        .putString(
+                            PENDING_BOOK_ID,
+                            bookId
                         )
-
-
-                    val themes =
-                        item.optJSONArray(
-                            "theme"
+                        .putString(
+                            PENDING_BOOK_TITLE,
+                            title
                         )
+                        .apply()
 
-
-                    val theme =
-                        buildString {
-
-                            if (
-                                themes != null
-                            ) {
-
-                                for (
-                                    j in 0 until themes.length()
-                                ) {
-
-                                    if (
-                                        j > 0
-                                    ) {
-                                        append(
-                                            ", "
-                                        )
-                                    }
-
-
-                                    append(
-                                        themes.optString(
-                                            j
-                                        )
-                                    )
-                                }
-                            }
-                        }
-
-
-                    books.add(
-
-                        Book(
-
-                            id =
-                                item.optString(
-                                    "book_id"
-                                ),
-
-                            title =
-                                item.optString(
-                                    "title"
-                                ),
-
-                            chapters =
-                                item.optInt(
-                                    "chapter_count"
-                                ),
-
-                            theme =
-                                theme
-                        )
-                    )
-                }
-
-
-                runOnUiThread {
-
-                    status.text =
-                        "${books.size} hasil ditemukan"
-
-
-                    books.forEach { book ->
-
-                        addBookCard(
-                            book,
-                            results
-                        )
-                    }
-                }
-
-            } catch (
-                e: Exception
-            ) {
-
-                e.printStackTrace()
-
-
-                runOnUiThread {
-
-                    status.text =
-                        "Gagal: ${e.message}"
-                }
-            }
-
-        }.start()
-    }
-
-
-    private fun addBookCard(
-        book: Book,
-        container: LinearLayout
-    ) {
-
-        val card =
-            LinearLayout(this).apply {
-
-                orientation =
-                    LinearLayout.VERTICAL
-
-                setPadding(
-                    dp(16),
-                    dp(15),
-                    dp(16),
-                    dp(15)
-                )
-
-                background =
-                    rounded(
-                        Color.rgb(
-                            27,
-                            27,
-                            27
-                        ),
-                        14f
-                    )
-
-                isClickable =
-                    true
-
-                isFocusable =
-                    true
-            }
-
-
-        val title =
-            TextView(this).apply {
-
-                text =
-                    book.title
-
-                textSize =
-                    16f
-
-                setTextColor(
-                    Color.WHITE
-                )
-
-                setTypeface(
-                    null,
-                    Typeface.BOLD
-                )
-            }
-
-
-        card.addView(
-            title
-        )
-
-
-        val meta =
-            TextView(this).apply {
-
-                text =
-                    buildString {
-
-                        append(
-                            "${book.chapters} Episode"
-                        )
-
-
-                        if (
-                            book.theme.isNotEmpty()
-                        ) {
-
-                            append(
-                                "  •  ${book.theme}"
+                    startActivity(
+                        Intent(
+                            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                            Uri.parse(
+                                "package:$packageName"
                             )
-                        }
-                    }
-
-                textSize =
-                    13f
-
-                setTextColor(
-                    Color.GRAY
-                )
-
-                setPadding(
-                    0,
-                    dp(7),
-                    0,
-                    0
-                )
+                        )
+                    )
+                }
             }
-
-
-        card.addView(
-            meta
-        )
-
-
-        val params =
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-
-
-        params.bottomMargin =
-            dp(10)
-
-
-        container.addView(
-            card,
-            params
-        )
-
-
-        card.setOnClickListener {
-
-            startFloatingPlayer(
-                book
-            )
         }
     }
 
-
-    private fun startFloatingPlayer(
-        book: Book
+    private fun startFloatingService(
+        bookId: String,
+        title: String
     ) {
-
-        if (
-            !Settings.canDrawOverlays(
-                this
-            )
-        ) {
-
-            requestOverlayPermission()
-
-            return
-        }
-
-
         val intent =
             Intent(
                 this,
                 FloatingPlayerService::class.java
             ).apply {
-
                 putExtra(
                     FloatingPlayerService.EXTRA_BOOK_ID,
-                    book.id
+                    bookId
                 )
 
                 putExtra(
                     FloatingPlayerService.EXTRA_BOOK_TITLE,
-                    book.title
+                    title
                 )
             }
-
 
         if (
             Build.VERSION.SDK_INT >=
             Build.VERSION_CODES.O
         ) {
-
-            startForegroundService(
-                intent
-            )
-
+            startForegroundService(intent)
         } else {
-
-            startService(
-                intent
-            )
+            startService(intent)
         }
 
-
         /*
-         * Activity selesai.
-         * Android balik ke app/game sebelumnya.
+         * Balikin user ke game/app sebelumnya.
          */
-
-        finish()
+        moveTaskToBack(true)
     }
-
 
     private fun httpGet(
         address: String
@@ -796,7 +252,6 @@ class MainActivity : Activity() {
                 .openConnection()
                 as HttpURLConnection
 
-
         connection.requestMethod =
             "GET"
 
@@ -806,24 +261,19 @@ class MainActivity : Activity() {
         connection.readTimeout =
             25000
 
-
         connection.setRequestProperty(
             "Accept",
             "application/json"
         )
 
-
         connection.setRequestProperty(
             "User-Agent",
-            "ReelShortFloating/2.0"
+            "ReelShortFloating/4.0 Android"
         )
 
-
         try {
-
             val code =
                 connection.responseCode
-
 
             val stream =
                 if (
@@ -834,7 +284,6 @@ class MainActivity : Activity() {
                     connection.errorStream
                 }
 
-
             val body =
                 stream
                     ?.bufferedReader()
@@ -843,62 +292,27 @@ class MainActivity : Activity() {
                     }
                     ?: ""
 
-
             if (
                 code !in 200..299
             ) {
-
                 throw Exception(
                     "HTTP $code"
                 )
             }
 
-
             return body
 
         } finally {
-
             connection.disconnect()
         }
     }
 
 
-    private fun rounded(
-        color: Int,
-        radiusDp: Float
-    ): GradientDrawable {
-
-        return GradientDrawable().apply {
-
-            setColor(
-                color
-            )
-
-            cornerRadius =
-                dp(radiusDp)
-                    .toFloat()
-        }
-    }
-
-
-    private fun dp(
-        value: Int
-    ): Int {
-
-        return (
-            value *
-            resources.displayMetrics.density
-        ).toInt()
-    }
-
-
-    private fun dp(
-        value: Float
-    ): Int {
-
-        return (
-            value *
-            resources.displayMetrics.density
-        ).toInt()
+    override fun onDestroy() {
+        webView.removeJavascriptInterface(
+            "AndroidApp"
+        )
+        webView.destroy()
+        super.onDestroy()
     }
 }

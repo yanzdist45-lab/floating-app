@@ -14,8 +14,8 @@ android {
         minSdk = 26
         targetSdk = 35
 
-        versionCode = 2
-        versionName = "2.0"
+        versionCode = 4
+        versionName = "4.0"
     }
 
     compileOptions {
@@ -29,6 +29,8 @@ android {
 }
 
 dependencies {
+    implementation("androidx.webkit:webkit:1.12.1")
+
     implementation("androidx.media3:media3-exoplayer:1.6.1")
     implementation("androidx.media3:media3-exoplayer-hls:1.6.1")
     implementation("androidx.media3:media3-ui:1.6.1")
