@@ -200,7 +200,7 @@ class ShortsActivity : Activity() {
                     14f
 
                 setTextColor(
-                    Color.WHITE
+                    Color.argb(235, 255, 255, 255)
                 )
 
                 setBackgroundColor(

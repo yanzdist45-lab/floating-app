@@ -415,7 +415,7 @@ class FloatingPlayerService : Service() {
                 9f /
                 16f
             ).toInt() +
-            dp(30)
+            dp(16)
 
         expandedParams =
             WindowManager.LayoutParams(
@@ -463,7 +463,7 @@ class FloatingPlayerService : Service() {
                             10,
                             10
                         ),
-                        15f
+                        18f
                     )
             }
 
@@ -489,7 +489,7 @@ class FloatingPlayerService : Service() {
                     "⋯"
 
                 textSize =
-                    25f
+                    20f
 
                 gravity =
                     Gravity.CENTER
@@ -509,7 +509,7 @@ class FloatingPlayerService : Service() {
             dots,
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(30)
+                dp(16)
             )
         )
 
@@ -908,7 +908,7 @@ class FloatingPlayerService : Service() {
                     Gravity.CENTER_HORIZONTAL
             ).apply {
                 topMargin =
-                    dp(28)
+                    dp(18)
             }
         )
 
@@ -951,7 +951,7 @@ class FloatingPlayerService : Service() {
             layoutParams =
                 LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
-                    dp(48)
+                    dp(44)
                 )
         }
     }
