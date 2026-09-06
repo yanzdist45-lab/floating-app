@@ -1129,13 +1129,15 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.PixelFormat
-import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.IBinder
 import android.provider.Settings
 import android.view.*
-import android.widget.*
+import android.widget.FrameLayout
+import android.widget.LinearLayout
+import android.widget.TextView
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
@@ -1144,16 +1146,11 @@ import java.net.HttpURLConnection
 import java.net.URL
 import kotlin.math.abs
 
-
 class FloatingPlayerService : Service() {
 
     companion object {
-
-        const val EXTRA_BOOK_ID =
-            "book_id"
-
-        const val EXTRA_BOOK_TITLE =
-            "book_title"
+        const val EXTRA_BOOK_ID = "book_id"
+        const val EXTRA_BOOK_TITLE = "book_title"
 
         private const val API =
             "https://reelshort.vercel.app"
@@ -1165,80 +1162,48 @@ class FloatingPlayerService : Service() {
             6969
     }
 
-
     data class Episode(
         val index: Int,
         val chapterId: String,
         val url: String
     )
 
+    private lateinit var wm: WindowManager
 
-    private lateinit var wm:
-            WindowManager
-
-
-    private var expandedRoot:
-            FrameLayout? = null
-
-
-    private var bubbleRoot:
-            FrameLayout? = null
-
+    private var expandedRoot: FrameLayout? = null
+    private var bubbleRoot: FrameLayout? = null
+    private var cardView: LinearLayout? = null
 
     private var expandedParams:
-            WindowManager.LayoutParams? = null
-
+        WindowManager.LayoutParams? = null
 
     private var bubbleParams:
-            WindowManager.LayoutParams? = null
+        WindowManager.LayoutParams? = null
 
+    private var player: ExoPlayer? = null
+    private var playerView: PlayerView? = null
 
-    private var player:
-            ExoPlayer? = null
-
-
-    private var playerView:
-            PlayerView? = null
-
-
-    private var titleText:
-            TextView? = null
-
-
-    private var episodeButton:
-            Button? = null
-
-
-    private var loadingText:
-            TextView? = null
-
-
-    private var episodePanel:
-            LinearLayout? = null
-
-
-    private var episodeGrid:
-            GridLayout? = null
-
+    private var loadingText: TextView? = null
+    private var menuPanel: LinearLayout? = null
+    private var fullscreenText: TextView? = null
+    private var resizeHandle: View? = null
 
     private val episodes =
         mutableListOf<Episode>()
 
+    private var currentEpisodePosition = 0
 
-    private var currentEpisodePosition =
-        0
+    private var currentBookId = ""
+    private var currentBookTitle = ""
 
+    private var loadingBook = false
 
-    private var currentBookId =
-        ""
+    private var fullscreen = false
 
-
-    private var currentBookTitle =
-        ""
-
-
-    private var loadingBook =
-        false
+    private var restoreX = 0
+    private var restoreY = 0
+    private var restoreWidth = 0
+    private var restoreHeight = 0
 
 
     override fun onCreate() {
@@ -1249,30 +1214,44 @@ class FloatingPlayerService : Service() {
                 WINDOW_SERVICE
             ) as WindowManager
 
-
         startForegroundNotification()
 
-
         player =
-            ExoPlayer
-                .Builder(this)
+            ExoPlayer.Builder(this)
                 .build()
 
-
         player?.addListener(
-
             object : Player.Listener {
 
                 override fun onPlaybackStateChanged(
                     state: Int
                 ) {
+                    when (state) {
 
-                    if (
-                        state ==
-                        Player.STATE_ENDED
-                    ) {
+                        Player.STATE_BUFFERING -> {
+                            loadingText?.apply {
+                                visibility = View.VISIBLE
+                                text = "Memuat..."
+                            }
+                        }
 
-                        nextEpisode()
+                        Player.STATE_READY -> {
+                            loadingText?.visibility =
+                                View.GONE
+                        }
+
+                        Player.STATE_ENDED -> {
+                            nextEpisode()
+                        }
+                    }
+                }
+
+                override fun onPlayerError(
+                    error: PlaybackException
+                ) {
+                    loadingText?.apply {
+                        visibility = View.VISIBLE
+                        text = "Video gagal diputar"
                     }
                 }
             }
@@ -1287,16 +1266,11 @@ class FloatingPlayerService : Service() {
     ): Int {
 
         if (
-            !Settings.canDrawOverlays(
-                this
-            )
+            !Settings.canDrawOverlays(this)
         ) {
-
             stopSelf()
-
             return START_NOT_STICKY
         }
-
 
         val bookId =
             intent
@@ -1305,7 +1279,6 @@ class FloatingPlayerService : Service() {
                 )
                 .orEmpty()
 
-
         val title =
             intent
                 ?.getStringExtra(
@@ -1313,65 +1286,34 @@ class FloatingPlayerService : Service() {
                 )
                 .orEmpty()
 
+        if (bookId.isEmpty()) {
 
-        /*
-         * Tidak ada book baru?
-         * Restore floating yang sudah ada.
-         */
-
-        if (
-            bookId.isEmpty()
-        ) {
-
-            restoreFromBubble()
+            if (expandedRoot != null) {
+                restoreFromBubble()
+            }
 
             return START_STICKY
         }
 
-
-        /*
-         * Pastikan UI overlay sudah dibuat.
-         */
-
-        if (
-            expandedRoot == null
-        ) {
-
+        if (expandedRoot == null) {
             createExpandedWindow()
             createBubbleWindow()
         }
 
-
         restoreFromBubble()
-
-
-        /*
-         * Kalau drama berbeda, load ulang episode.
-         */
 
         if (
             bookId != currentBookId ||
             episodes.isEmpty()
         ) {
-
-            currentBookId =
-                bookId
-
-
-            currentBookTitle =
-                title
-
+            currentBookId = bookId
+            currentBookTitle = title
 
             loadBookEpisodes(
                 bookId,
                 title
             )
-
-        } else {
-
-            updateHeader()
         }
-
 
         return START_STICKY
     }
@@ -1379,7 +1321,7 @@ class FloatingPlayerService : Service() {
 
     /*
      * =========================================================
-     * FOREGROUND NOTIFICATION
+     * NOTIFICATION
      * =========================================================
      */
 
@@ -1390,35 +1332,24 @@ class FloatingPlayerService : Service() {
                 Context.NOTIFICATION_SERVICE
             ) as NotificationManager
 
-
         val channel =
             NotificationChannel(
                 CHANNEL_ID,
                 "ReelShort Floating",
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-
-                description =
-                    "Menjaga floating video tetap aktif"
-
-                setSound(
-                    null,
-                    null
-                )
+                setSound(null, null)
             }
-
 
         manager.createNotificationChannel(
             channel
         )
-
 
         val openIntent =
             Intent(
                 this,
                 MainActivity::class.java
             )
-
 
         val pendingIntent =
             PendingIntent.getActivity(
@@ -1429,36 +1360,25 @@ class FloatingPlayerService : Service() {
                     PendingIntent.FLAG_UPDATE_CURRENT
             )
 
-
         val notification =
-            Notification
-                .Builder(
-                    this,
-                    CHANNEL_ID
-                )
-
+            Notification.Builder(
+                this,
+                CHANNEL_ID
+            )
                 .setSmallIcon(
                     android.R.drawable.ic_media_play
                 )
-
                 .setContentTitle(
                     "ReelShort Floating"
                 )
-
                 .setContentText(
                     "Floating player aktif"
                 )
-
                 .setContentIntent(
                     pendingIntent
                 )
-
-                .setOngoing(
-                    true
-                )
-
+                .setOngoing(true)
                 .build()
-
 
         startForeground(
             NOTIFICATION_ID,
@@ -1474,53 +1394,34 @@ class FloatingPlayerService : Service() {
                 currentEpisodePosition
             )
 
-
         val text =
-            if (
-                episode != null
-            ) {
-
+            if (episode != null) {
                 "EP.${episode.index} / EP.${episodes.size}"
-
             } else {
-
                 "Floating player aktif"
             }
 
-
         val notification =
-            Notification
-                .Builder(
-                    this,
-                    CHANNEL_ID
-                )
-
+            Notification.Builder(
+                this,
+                CHANNEL_ID
+            )
                 .setSmallIcon(
                     android.R.drawable.ic_media_play
                 )
-
                 .setContentTitle(
                     currentBookTitle.ifEmpty {
                         "ReelShort Floating"
                     }
                 )
-
-                .setContentText(
-                    text
-                )
-
-                .setOngoing(
-                    true
-                )
-
+                .setContentText(text)
+                .setOngoing(true)
                 .build()
-
 
         val manager =
             getSystemService(
                 Context.NOTIFICATION_SERVICE
             ) as NotificationManager
-
 
         manager.notify(
             NOTIFICATION_ID,
@@ -1531,7 +1432,7 @@ class FloatingPlayerService : Service() {
 
     /*
      * =========================================================
-     * EXPANDED WINDOW
+     * FLOATING WINDOW
      * =========================================================
      */
 
@@ -1540,56 +1441,38 @@ class FloatingPlayerService : Service() {
         val metrics =
             resources.displayMetrics
 
-
         val screenWidth =
             metrics.widthPixels
-
 
         val screenHeight =
             metrics.heightPixels
 
-
         /*
-         * Landscape:
-         * sekitar 38% lebar layar seperti screenshot lu.
+         * Landscape sekitar 38% layar.
          *
-         * Portrait:
-         * sekitar 88%.
+         * Tinggi cuma video 16:9 +
+         * chrome kecil sekitar 60dp.
          */
 
-        val initialWidth =
-            if (
-                screenWidth >
-                screenHeight
-            ) {
-
-                (
-                    screenWidth *
-                    0.38f
-                ).toInt()
-
+        val width =
+            if (screenWidth > screenHeight) {
+                (screenWidth * 0.38f).toInt()
             } else {
-
-                (
-                    screenWidth *
-                    0.88f
-                ).toInt()
+                (screenWidth * 0.88f).toInt()
             }
 
+        val videoHeight =
+            (width * 9f / 16f)
+                .toInt()
 
-        val initialHeight =
-            (
-                initialWidth *
-                0.72f
-            ).toInt()
-
+        val height =
+            videoHeight +
+            dp(60)
 
         expandedParams =
             WindowManager.LayoutParams(
-
-                initialWidth,
-
-                initialHeight,
+                width,
+                height,
 
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
 
@@ -1598,25 +1481,22 @@ class FloatingPlayerService : Service() {
                     WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
 
                 PixelFormat.TRANSLUCENT
-
             ).apply {
 
                 gravity =
                     Gravity.TOP or
                     Gravity.START
 
-
-                x =
-                    dp(25)
-
-
-                y =
-                    dp(90)
+                x = dp(20)
+                y = dp(80)
             }
 
 
         val root =
             FrameLayout(this)
+
+        expandedRoot =
+            root
 
 
         /*
@@ -1631,16 +1511,16 @@ class FloatingPlayerService : Service() {
 
                 background =
                     rounded(
-                        Color.argb(
-                            245,
-                            15,
-                            15,
-                            15
+                        Color.rgb(
+                            12,
+                            12,
+                            12
                         ),
                         18f
                     )
             }
 
+        cardView = card
 
         root.addView(
             card,
@@ -1652,147 +1532,107 @@ class FloatingPlayerService : Service() {
 
 
         /*
-         * HEADER
+         * ONE UI STYLE TOP HANDLE
          */
 
-        val header =
-            LinearLayout(this).apply {
-
-                orientation =
-                    LinearLayout.HORIZONTAL
-
-                gravity =
-                    Gravity.CENTER_VERTICAL
-
-                setPadding(
-                    dp(10),
-                    dp(5),
-                    dp(6),
-                    dp(5)
-                )
-            }
-
-
-        val dragTitle =
-            TextView(this).apply {
-
-                text =
-                    "ReelShort"
-
-                textSize =
-                    13f
-
-                setTextColor(
-                    Color.WHITE
-                )
-
-                setTypeface(
-                    null,
-                    Typeface.BOLD
-                )
-
-                gravity =
-                    Gravity.CENTER_VERTICAL
-
-                setPadding(
-                    dp(7),
-                    0,
-                    dp(8),
-                    0
-                )
-            }
-
-
-        titleText =
-            dragTitle
-
-
-        header.addView(
-            dragTitle,
-            LinearLayout.LayoutParams(
-                0,
-                dp(40),
-                1f
-            )
-        )
-
-
-        val minimize =
-            TextView(this).apply {
-
-                text =
-                    "—"
-
-                textSize =
-                    22f
-
-                gravity =
-                    Gravity.CENTER
-
-                setTextColor(
-                    Color.WHITE
-                )
-
-                setOnClickListener {
-
-                    minimizeToBubble()
-                }
-            }
-
-
-        header.addView(
-            minimize,
-            LinearLayout.LayoutParams(
-                dp(44),
-                dp(40)
-            )
-        )
-
-
-        val close =
-            TextView(this).apply {
-
-                text =
-                    "×"
-
-                textSize =
-                    23f
-
-                gravity =
-                    Gravity.CENTER
-
-                setTextColor(
-                    Color.WHITE
-                )
-
-                setOnClickListener {
-
-                    stopSelf()
-                }
-            }
-
-
-        header.addView(
-            close,
-            LinearLayout.LayoutParams(
-                dp(44),
-                dp(40)
-            )
-        )
-
+        val chrome =
+            FrameLayout(this)
 
         card.addView(
-            header
-        )
-
-
-        enableWindowDrag(
-            dragTitle
+            chrome,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(42)
+            )
         )
 
 
         /*
-         * VIDEO AREA
+         * Area drag dibuat lebih besar
+         * daripada garisnya supaya gampang disentuh.
+         */
+
+        val dragZone =
+            FrameLayout(this)
+
+        chrome.addView(
+            dragZone,
+            FrameLayout.LayoutParams(
+                dp(130),
+                dp(20),
+                Gravity.TOP or
+                    Gravity.CENTER_HORIZONTAL
+            )
+        )
+
+
+        val handle =
+            View(this).apply {
+
+                background =
+                    rounded(
+                        Color.rgb(
+                            130,
+                            130,
+                            130
+                        ),
+                        10f
+                    )
+            }
+
+        dragZone.addView(
+            handle,
+            FrameLayout.LayoutParams(
+                dp(62),
+                dp(4),
+                Gravity.CENTER
+            )
+        )
+
+        enableWindowDrag(
+            dragZone
+        )
+
+
+        /*
+         * THREE DOTS
+         */
+
+        val dots =
+            TextView(this).apply {
+
+                text = "⋯"
+
+                textSize = 25f
+
+                gravity =
+                    Gravity.CENTER
+
+                setTextColor(
+                    Color.WHITE
+                )
+
+                setOnClickListener {
+                    toggleMenu()
+                }
+            }
+
+        val dotsParams =
+            FrameLayout.LayoutParams(
+                dp(60),
+                dp(30),
+                Gravity.BOTTOM or
+                    Gravity.CENTER_HORIZONTAL
+            )
+
+        chrome.addView(
+            dots,
+            dotsParams
+        )
+
+
+        /*
+         * VIDEO
          */
 
         val playerContainer =
@@ -1802,6 +1642,15 @@ class FloatingPlayerService : Service() {
                     Color.BLACK
                 )
             }
+
+        card.addView(
+            playerContainer,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                0,
+                1f
+            )
+        )
 
 
         playerView =
@@ -1817,32 +1666,19 @@ class FloatingPlayerService : Service() {
                     Color.BLACK
                 )
 
-
-                /*
-                 * Tap video = play / pause.
-                 */
-
                 setOnClickListener {
-
                     togglePlayPause()
                 }
             }
 
-
         playerContainer.addView(
-
             playerView,
-
             FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
         )
 
-
-        /*
-         * Loading label
-         */
 
         loadingText =
             TextView(this).apply {
@@ -1850,11 +1686,11 @@ class FloatingPlayerService : Service() {
                 text =
                     "Memuat..."
 
-                textSize =
-                    13f
-
                 gravity =
                     Gravity.CENTER
+
+                textSize =
+                    12f
 
                 setTextColor(
                     Color.WHITE
@@ -1862,7 +1698,7 @@ class FloatingPlayerService : Service() {
 
                 setBackgroundColor(
                     Color.argb(
-                        80,
+                        70,
                         0,
                         0,
                         0
@@ -1870,136 +1706,12 @@ class FloatingPlayerService : Service() {
                 )
             }
 
-
         playerContainer.addView(
-
             loadingText,
-
             FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
-        )
-
-
-        card.addView(
-
-            playerContainer,
-
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                0,
-                1f
-            )
-        )
-
-
-        /*
-         * CONTROLS
-         */
-
-        val controls =
-            LinearLayout(this).apply {
-
-                orientation =
-                    LinearLayout.HORIZONTAL
-
-                gravity =
-                    Gravity.CENTER_VERTICAL
-
-                setPadding(
-                    dp(6),
-                    dp(4),
-                    dp(6),
-                    dp(4)
-                )
-            }
-
-
-        val previous =
-            Button(this).apply {
-
-                text =
-                    "‹"
-
-                textSize =
-                    21f
-
-                setOnClickListener {
-
-                    previousEpisode()
-                }
-            }
-
-
-        controls.addView(
-
-            previous,
-
-            LinearLayout.LayoutParams(
-                dp(55),
-                dp(44)
-            )
-        )
-
-
-        episodeButton =
-            Button(this).apply {
-
-                text =
-                    "EP.- / EP.-"
-
-                textSize =
-                    12f
-
-                setOnClickListener {
-
-                    toggleEpisodePanel()
-                }
-            }
-
-
-        controls.addView(
-
-            episodeButton,
-
-            LinearLayout.LayoutParams(
-                0,
-                dp(44),
-                1f
-            )
-        )
-
-
-        val next =
-            Button(this).apply {
-
-                text =
-                    "›"
-
-                textSize =
-                    21f
-
-                setOnClickListener {
-
-                    nextEpisode()
-                }
-            }
-
-
-        controls.addView(
-
-            next,
-
-            LinearLayout.LayoutParams(
-                dp(55),
-                dp(44)
-            )
-        )
-
-
-        card.addView(
-            controls
         )
 
 
@@ -2014,35 +1726,38 @@ class FloatingPlayerService : Service() {
                     "◢"
 
                 textSize =
-                    17f
+                    15f
 
                 gravity =
                     Gravity.END or
                     Gravity.CENTER_VERTICAL
 
                 setTextColor(
-                    Color.GRAY
+                    Color.rgb(
+                        110,
+                        110,
+                        110
+                    )
                 )
 
                 setPadding(
                     0,
                     0,
-                    dp(9),
+                    dp(8),
                     0
                 )
             }
 
+        resizeHandle =
+            resize
 
         card.addView(
-
             resize,
-
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(20)
+                dp(18)
             )
         )
-
 
         enableResize(
             resize
@@ -2050,16 +1765,12 @@ class FloatingPlayerService : Service() {
 
 
         /*
-         * EPISODE PANEL
+         * POPUP MENU
          */
 
-        createEpisodePanel(
+        createMenu(
             root
         )
-
-
-        expandedRoot =
-            root
 
 
         wm.addView(
@@ -2071,15 +1782,15 @@ class FloatingPlayerService : Service() {
 
     /*
      * =========================================================
-     * EPISODE PANEL
+     * THREE DOT MENU
      * =========================================================
      */
 
-    private fun createEpisodePanel(
+    private fun createMenu(
         parent: FrameLayout
     ) {
 
-        val panel =
+        val menu =
             LinearLayout(this).apply {
 
                 orientation =
@@ -2088,285 +1799,266 @@ class FloatingPlayerService : Service() {
                 visibility =
                     View.GONE
 
-                setPadding(
-                    dp(10),
-                    dp(8),
-                    dp(10),
-                    dp(10)
-                )
+                elevation =
+                    dp(12).toFloat()
 
                 background =
                     rounded(
-                        Color.argb(
-                            250,
-                            24,
-                            24,
-                            24
+                        Color.rgb(
+                            38,
+                            38,
+                            38
                         ),
-                        14f
+                        15f
                     )
-            }
 
-
-        val top =
-            LinearLayout(this).apply {
-
-                orientation =
-                    LinearLayout.HORIZONTAL
-
-                gravity =
-                    Gravity.CENTER_VERTICAL
-            }
-
-
-        val title =
-            TextView(this).apply {
-
-                text =
-                    "Pilih Episode"
-
-                textSize =
-                    15f
-
-                setTypeface(
-                    null,
-                    Typeface.BOLD
-                )
-
-                setTextColor(
-                    Color.WHITE
+                setPadding(
+                    dp(6),
+                    dp(6),
+                    dp(6),
+                    dp(6)
                 )
             }
 
 
-        top.addView(
+        val full =
+            menuItem(
+                "⛶    Layar penuh"
+            ) {
+                toggleFullscreen()
+                hideMenu()
+            }
 
-            title,
+        fullscreenText =
+            full
 
-            LinearLayout.LayoutParams(
-                0,
-                dp(42),
-                1f
-            )
-        )
+
+        val minimize =
+            menuItem(
+                "—    Minimalkan"
+            ) {
+                hideMenu()
+                minimizeToBubble()
+            }
 
 
         val close =
-            TextView(this).apply {
-
-                text =
-                    "×"
-
-                textSize =
-                    21f
-
-                gravity =
-                    Gravity.CENTER
-
-                setTextColor(
-                    Color.WHITE
-                )
-
-                setOnClickListener {
-
-                    hideEpisodePanel()
-                }
+            menuItem(
+                "×    Tutup"
+            ) {
+                stopSelf()
             }
 
 
-        top.addView(
+        menu.addView(
+            full
+        )
 
-            close,
+        menu.addView(
+            minimize
+        )
 
-            LinearLayout.LayoutParams(
-                dp(44),
-                dp(42)
+        menu.addView(
+            close
+        )
+
+
+        val params =
+            FrameLayout.LayoutParams(
+                dp(210),
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.TOP or
+                    Gravity.CENTER_HORIZONTAL
             )
-        )
 
-
-        panel.addView(
-            top
-        )
-
-
-        val scroll =
-            ScrollView(this)
-
-
-        val grid =
-            GridLayout(this).apply {
-
-                columnCount =
-                    4
-
-                setPadding(
-                    0,
-                    0,
-                    0,
-                    dp(10)
-                )
-            }
-
-
-        episodeGrid =
-            grid
-
-
-        scroll.addView(
-            grid
-        )
-
-
-        panel.addView(
-
-            scroll,
-
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                0,
-                1f
-            )
-        )
+        params.topMargin =
+            dp(38)
 
 
         parent.addView(
-
-            panel,
-
-            FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            ).apply {
-
-                setMargins(
-                    dp(12),
-                    dp(50),
-                    dp(12),
-                    dp(12)
-                )
-            }
+            menu,
+            params
         )
 
 
-        episodePanel =
-            panel
+        menuPanel =
+            menu
     }
 
 
-    private fun rebuildEpisodeGrid() {
+    private fun menuItem(
+        label: String,
+        action: () -> Unit
+    ): TextView {
 
-        val grid =
-            episodeGrid
-                ?: return
+        return TextView(this).apply {
 
+            text =
+                label
 
-        grid.removeAllViews()
+            textSize =
+                14f
 
+            gravity =
+                Gravity.CENTER_VERTICAL
 
-        episodes.forEachIndexed {
-                position,
-                episode ->
+            setTextColor(
+                Color.WHITE
+            )
 
-
-            val button =
-                Button(this).apply {
-
-                    text =
-                        "${episode.index}"
-
-                    textSize =
-                        11f
-
-
-                    alpha =
-                        if (
-                            position ==
-                            currentEpisodePosition
-                        ) {
-
-                            1f
-
-                        } else {
-
-                            0.72f
-                        }
-
-
-                    setOnClickListener {
-
-                        playEpisode(
-                            position
-                        )
-
-                        hideEpisodePanel()
-                    }
-                }
-
-
-            val params =
-                GridLayout.LayoutParams()
-
-
-            params.width =
+            setPadding(
+                dp(16),
+                0,
+                dp(16),
                 0
+            )
 
+            background =
+                selectableBackground()
 
-            params.height =
-                dp(46)
+            setOnClickListener {
+                action()
+            }
 
-
-            params.columnSpec =
-                GridLayout.spec(
-                    GridLayout.UNDEFINED,
-                    1f
+            layoutParams =
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    dp(48)
                 )
-
-
-            params.setMargins(
-                dp(2),
-                dp(2),
-                dp(2),
-                dp(2)
-            )
-
-
-            grid.addView(
-                button,
-                params
-            )
         }
     }
 
 
-    private fun toggleEpisodePanel() {
+    private fun toggleMenu() {
 
-        val panel =
-            episodePanel
+        val menu =
+            menuPanel
                 ?: return
 
+        menu.visibility =
+            if (
+                menu.visibility ==
+                View.VISIBLE
+            ) {
+                View.GONE
+            } else {
+                View.VISIBLE
+            }
+    }
 
-        if (
-            panel.visibility ==
-            View.VISIBLE
-        ) {
 
-            hideEpisodePanel()
+    private fun hideMenu() {
+        menuPanel?.visibility =
+            View.GONE
+    }
+
+
+    /*
+     * =========================================================
+     * FULL SCREEN OVERLAY
+     * =========================================================
+     */
+
+    private fun toggleFullscreen() {
+
+        val params =
+            expandedParams
+                ?: return
+
+        val root =
+            expandedRoot
+                ?: return
+
+        val metrics =
+            resources.displayMetrics
+
+
+        if (!fullscreen) {
+
+            restoreX =
+                params.x
+
+            restoreY =
+                params.y
+
+            restoreWidth =
+                params.width
+
+            restoreHeight =
+                params.height
+
+
+            params.x = 0
+            params.y = 0
+
+            params.width =
+                metrics.widthPixels
+
+            params.height =
+                metrics.heightPixels
+
+
+            fullscreen =
+                true
+
+
+            fullscreenText?.text =
+                "↙    Kembalikan ukuran"
+
+
+            resizeHandle?.visibility =
+                View.GONE
+
+
+            cardView?.background =
+                rounded(
+                    Color.BLACK,
+                    0f
+                )
 
         } else {
 
-            rebuildEpisodeGrid()
+            params.x =
+                restoreX
 
-            panel.visibility =
+            params.y =
+                restoreY
+
+            params.width =
+                restoreWidth
+
+            params.height =
+                restoreHeight
+
+
+            fullscreen =
+                false
+
+
+            fullscreenText?.text =
+                "⛶    Layar penuh"
+
+
+            resizeHandle?.visibility =
                 View.VISIBLE
+
+
+            cardView?.background =
+                rounded(
+                    Color.rgb(
+                        12,
+                        12,
+                        12
+                    ),
+                    18f
+                )
         }
-    }
 
 
-    private fun hideEpisodePanel() {
-
-        episodePanel?.visibility =
-            View.GONE
+        wm.updateViewLayout(
+            root,
+            params
+        )
     }
 
 
@@ -2380,10 +2072,8 @@ class FloatingPlayerService : Service() {
 
         bubbleParams =
             WindowManager.LayoutParams(
-
-                dp(58),
-
-                dp(58),
+                dp(56),
+                dp(56),
 
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
 
@@ -2391,17 +2081,14 @@ class FloatingPlayerService : Service() {
                     WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
 
                 PixelFormat.TRANSLUCENT
-
             ).apply {
 
                 gravity =
                     Gravity.TOP or
                     Gravity.START
 
-
                 x =
                     dp(20)
-
 
                 y =
                     dp(120)
@@ -2415,19 +2102,13 @@ class FloatingPlayerService : Service() {
         val icon =
             TextView(this).apply {
 
-                text =
-                    "R"
+                text = "R"
 
                 textSize =
-                    21f
+                    20f
 
                 gravity =
                     Gravity.CENTER
-
-                setTypeface(
-                    null,
-                    Typeface.BOLD
-                )
 
                 setTextColor(
                     Color.WHITE
@@ -2440,8 +2121,7 @@ class FloatingPlayerService : Service() {
                             GradientDrawable.OVAL
 
                         setColor(
-                            Color.argb(
-                                245,
+                            Color.rgb(
                                 25,
                                 25,
                                 25
@@ -2461,9 +2141,7 @@ class FloatingPlayerService : Service() {
 
 
         root.addView(
-
             icon,
-
             FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
@@ -2493,12 +2171,10 @@ class FloatingPlayerService : Service() {
 
     private fun minimizeToBubble() {
 
-        hideEpisodePanel()
-
+        hideMenu()
 
         expandedRoot?.visibility =
             View.GONE
-
 
         bubbleRoot?.visibility =
             View.VISIBLE
@@ -2507,17 +2183,8 @@ class FloatingPlayerService : Service() {
 
     private fun restoreFromBubble() {
 
-        if (
-            expandedRoot == null ||
-            bubbleRoot == null
-        ) {
-            return
-        }
-
-
         bubbleRoot?.visibility =
             View.GONE
-
 
         expandedRoot?.visibility =
             View.VISIBLE
@@ -2526,7 +2193,7 @@ class FloatingPlayerService : Service() {
 
     /*
      * =========================================================
-     * LOAD EPISODES
+     * EPISODES
      * =========================================================
      */
 
@@ -2535,32 +2202,23 @@ class FloatingPlayerService : Service() {
         fallbackTitle: String
     ) {
 
-        if (
-            loadingBook
-        ) {
+        if (loadingBook) {
             return
         }
 
-
         loadingBook =
             true
-
 
         episodes.clear()
 
 
         loadingText?.apply {
-
             visibility =
                 View.VISIBLE
 
             text =
-                "Memuat episode..."
+                "Memuat..."
         }
-
-
-        episodeButton?.text =
-            "MEMUAT..."
 
 
         Thread {
@@ -2584,21 +2242,20 @@ class FloatingPlayerService : Service() {
                         "ok"
                     )
                 ) {
-
                     throw Exception(
                         "API episode gagal"
                     )
                 }
 
 
-                val loaded =
-                    mutableListOf<Episode>()
-
-
                 val array =
                     json.getJSONArray(
                         "episodes"
                     )
+
+
+                val loaded =
+                    mutableListOf<Episode>()
 
 
                 for (
@@ -2611,20 +2268,18 @@ class FloatingPlayerService : Service() {
                         )
 
 
-                    val videoUrl =
+                    val url =
                         selectVideoUrl(
                             item
                         )
 
 
                     if (
-                        videoUrl.isNotEmpty()
+                        url.isNotEmpty()
                     ) {
 
                         loaded.add(
-
                             Episode(
-
                                 index =
                                     item.optInt(
                                         "index",
@@ -2637,7 +2292,7 @@ class FloatingPlayerService : Service() {
                                     ),
 
                                 url =
-                                    videoUrl
+                                    url
                             )
                         )
                     }
@@ -2647,14 +2302,13 @@ class FloatingPlayerService : Service() {
                 if (
                     loaded.isEmpty()
                 ) {
-
                     throw Exception(
-                        "Tidak ada stream video"
+                        "Tidak ada video"
                     )
                 }
 
 
-                val realTitle =
+                val title =
                     json.optString(
                         "title",
                         fallbackTitle
@@ -2671,14 +2325,14 @@ class FloatingPlayerService : Service() {
 
 
                     currentBookTitle =
-                        realTitle
+                        title
 
 
                     loadingBook =
                         false
 
 
-                    val preferences =
+                    val prefs =
                         getSharedPreferences(
                             "player",
                             MODE_PRIVATE
@@ -2686,7 +2340,7 @@ class FloatingPlayerService : Service() {
 
 
                     val saved =
-                        preferences.getInt(
+                        prefs.getInt(
                             "episode_$bookId",
                             0
                         )
@@ -2699,13 +2353,11 @@ class FloatingPlayerService : Service() {
                         )
 
 
-                    rebuildEpisodeGrid()
-
-
                     playEpisode(
                         currentEpisodePosition
                     )
                 }
+
 
             } catch (
                 e: Exception
@@ -2726,12 +2378,8 @@ class FloatingPlayerService : Service() {
                             View.VISIBLE
 
                         text =
-                            "Gagal: ${e.message}"
+                            "Gagal memuat video"
                     }
-
-
-                    episodeButton?.text =
-                        "GAGAL"
                 }
             }
 
@@ -2739,20 +2387,9 @@ class FloatingPlayerService : Service() {
     }
 
 
-    /*
-     * =========================================================
-     * SELECT VIDEO URL
-     * =========================================================
-     */
-
     private fun selectVideoUrl(
         item: JSONObject
     ): String {
-
-        /*
-         * Native Android tidak punya masalah CORS,
-         * jadi source HLS langsung adalah pilihan pertama.
-         */
 
         var result =
             item.optString(
@@ -2786,24 +2423,15 @@ class FloatingPlayerService : Service() {
         }
 
 
-        /*
-         * Fallback proxy.
-         */
-
         if (
             result.isEmpty()
         ) {
-
             result =
                 item.optString(
                     "videoUrl"
                 )
         }
 
-
-        /*
-         * Hindari cleartext.
-         */
 
         if (
             result.startsWith(
@@ -2822,12 +2450,6 @@ class FloatingPlayerService : Service() {
         return result
     }
 
-
-    /*
-     * =========================================================
-     * PLAYBACK
-     * =========================================================
-     */
 
     private fun playEpisode(
         position: Int
@@ -2857,16 +2479,8 @@ class FloatingPlayerService : Service() {
                 View.VISIBLE
 
             text =
-                "Memuat EP.${episode.index}..."
+                "Memuat..."
         }
-
-
-        titleText?.text =
-            currentBookTitle
-
-
-        episodeButton?.text =
-            "EP.${episode.index} / EP.${episodes.size}"
 
 
         player?.apply {
@@ -2896,9 +2510,6 @@ class FloatingPlayerService : Service() {
             .apply()
 
 
-        rebuildEpisodeGrid()
-
-
         updateNotification()
     }
 
@@ -2920,33 +2531,8 @@ class FloatingPlayerService : Service() {
             next <=
             episodes.lastIndex
         ) {
-
             playEpisode(
                 next
-            )
-        }
-    }
-
-
-    private fun previousEpisode() {
-
-        if (
-            episodes.isEmpty()
-        ) {
-            return
-        }
-
-
-        val previous =
-            currentEpisodePosition - 1
-
-
-        if (
-            previous >= 0
-        ) {
-
-            playEpisode(
-                previous
             )
         }
     }
@@ -2959,14 +2545,9 @@ class FloatingPlayerService : Service() {
                 ?: return
 
 
-        if (
-            p.isPlaying
-        ) {
-
+        if (p.isPlaying) {
             p.pause()
-
         } else {
-
             p.play()
         }
     }
@@ -2974,24 +2555,7 @@ class FloatingPlayerService : Service() {
 
     /*
      * =========================================================
-     * PLAYER EVENTS
-     * =========================================================
-     */
-
-    private fun installPlayerEvents() {
-
-        /*
-         * Listener utama dipasang di onCreate.
-         *
-         * Loading state ditangani terpisah karena
-         * PlayerView bisa dibuat setelah player.
-         */
-    }
-
-
-    /*
-     * =========================================================
-     * DRAG
+     * DRAG WINDOW
      * =========================================================
      */
 
@@ -3000,29 +2564,24 @@ class FloatingPlayerService : Service() {
     ) {
 
         target.setOnTouchListener(
-
             object : View.OnTouchListener {
 
-                var startX =
-                    0
+                var startX = 0
+                var startY = 0
 
-
-                var startY =
-                    0
-
-
-                var touchX =
-                    0f
-
-
-                var touchY =
-                    0f
+                var touchX = 0f
+                var touchY = 0f
 
 
                 override fun onTouch(
                     view: View?,
                     event: MotionEvent
                 ): Boolean {
+
+                    if (fullscreen) {
+                        return false
+                    }
+
 
                     val params =
                         expandedParams
@@ -3038,18 +2597,14 @@ class FloatingPlayerService : Service() {
                             startX =
                                 params.x
 
-
                             startY =
                                 params.y
-
 
                             touchX =
                                 event.rawX
 
-
                             touchY =
                                 event.rawY
-
 
                             return true
                         }
@@ -3065,20 +2620,14 @@ class FloatingPlayerService : Service() {
                                 (
                                     metrics.widthPixels -
                                     params.width
-                                )
-                                    .coerceAtLeast(
-                                        0
-                                    )
+                                ).coerceAtLeast(0)
 
 
                             val maxY =
                                 (
                                     metrics.heightPixels -
                                     params.height
-                                )
-                                    .coerceAtLeast(
-                                        0
-                                    )
+                                ).coerceAtLeast(0)
 
 
                             params.x =
@@ -3088,11 +2637,10 @@ class FloatingPlayerService : Service() {
                                         event.rawX -
                                         touchX
                                     ).toInt()
+                                ).coerceIn(
+                                    0,
+                                    maxX
                                 )
-                                    .coerceIn(
-                                        0,
-                                        maxX
-                                    )
 
 
                             params.y =
@@ -3102,11 +2650,10 @@ class FloatingPlayerService : Service() {
                                         event.rawY -
                                         touchY
                                     ).toInt()
+                                ).coerceIn(
+                                    0,
+                                    maxY
                                 )
-                                    .coerceIn(
-                                        0,
-                                        maxY
-                                    )
 
 
                             expandedRoot?.let {
@@ -3141,29 +2688,24 @@ class FloatingPlayerService : Service() {
     ) {
 
         target.setOnTouchListener(
-
             object : View.OnTouchListener {
 
-                var startWidth =
-                    0
+                var startWidth = 0
+                var startHeight = 0
 
-
-                var startHeight =
-                    0
-
-
-                var touchX =
-                    0f
-
-
-                var touchY =
-                    0f
+                var touchX = 0f
+                var touchY = 0f
 
 
                 override fun onTouch(
                     view: View?,
                     event: MotionEvent
                 ): Boolean {
+
+                    if (fullscreen) {
+                        return false
+                    }
+
 
                     val params =
                         expandedParams
@@ -3179,18 +2721,14 @@ class FloatingPlayerService : Service() {
                             startWidth =
                                 params.width
 
-
                             startHeight =
                                 params.height
-
 
                             touchX =
                                 event.rawX
 
-
                             touchY =
                                 event.rawY
-
 
                             return true
                         }
@@ -3202,14 +2740,14 @@ class FloatingPlayerService : Service() {
                                 resources.displayMetrics
 
 
-                            val deltaX =
+                            val dx =
                                 (
                                     event.rawX -
                                     touchX
                                 ).toInt()
 
 
-                            val deltaY =
+                            val dy =
                                 (
                                     event.rawY -
                                     touchY
@@ -3217,53 +2755,49 @@ class FloatingPlayerService : Service() {
 
 
                             val minWidth =
-                                dp(250)
+                                dp(230)
 
 
                             val minHeight =
-                                dp(190)
+                                dp(170)
 
 
                             val maxWidth =
                                 (
                                     metrics.widthPixels -
                                     params.x
+                                ).coerceAtLeast(
+                                    minWidth
                                 )
-                                    .coerceAtLeast(
-                                        minWidth
-                                    )
 
 
                             val maxHeight =
                                 (
                                     metrics.heightPixels -
                                     params.y
+                                ).coerceAtLeast(
+                                    minHeight
                                 )
-                                    .coerceAtLeast(
-                                        minHeight
-                                    )
 
 
                             params.width =
                                 (
                                     startWidth +
-                                    deltaX
+                                    dx
+                                ).coerceIn(
+                                    minWidth,
+                                    maxWidth
                                 )
-                                    .coerceIn(
-                                        minWidth,
-                                        maxWidth
-                                    )
 
 
                             params.height =
                                 (
                                     startHeight +
-                                    deltaY
+                                    dy
+                                ).coerceIn(
+                                    minHeight,
+                                    maxHeight
                                 )
-                                    .coerceIn(
-                                        minHeight,
-                                        maxHeight
-                                    )
 
 
                             expandedRoot?.let {
@@ -3289,7 +2823,7 @@ class FloatingPlayerService : Service() {
 
     /*
      * =========================================================
-     * BUBBLE DRAG + TAP
+     * BUBBLE DRAG
      * =========================================================
      */
 
@@ -3298,27 +2832,15 @@ class FloatingPlayerService : Service() {
     ) {
 
         target.setOnTouchListener(
-
             object : View.OnTouchListener {
 
-                var startX =
-                    0
+                var startX = 0
+                var startY = 0
 
+                var touchX = 0f
+                var touchY = 0f
 
-                var startY =
-                    0
-
-
-                var touchX =
-                    0f
-
-
-                var touchY =
-                    0f
-
-
-                var moved =
-                    false
+                var moved = false
 
 
                 override fun onTouch(
@@ -3340,22 +2862,17 @@ class FloatingPlayerService : Service() {
                             startX =
                                 params.x
 
-
                             startY =
                                 params.y
-
 
                             touchX =
                                 event.rawX
 
-
                             touchY =
                                 event.rawY
 
-
                             moved =
                                 false
-
 
                             return true
                         }
@@ -3377,9 +2894,7 @@ class FloatingPlayerService : Service() {
                                 abs(dx) > dp(5) ||
                                 abs(dy) > dp(5)
                             ) {
-
-                                moved =
-                                    true
+                                moved = true
                             }
 
 
@@ -3391,42 +2906,34 @@ class FloatingPlayerService : Service() {
                                 (
                                     metrics.widthPixels -
                                     params.width
-                                )
-                                    .coerceAtLeast(
-                                        0
-                                    )
+                                ).coerceAtLeast(0)
 
 
                             val maxY =
                                 (
                                     metrics.heightPixels -
                                     params.height
-                                )
-                                    .coerceAtLeast(
-                                        0
-                                    )
+                                ).coerceAtLeast(0)
 
 
                             params.x =
                                 (
                                     startX +
                                     dx.toInt()
+                                ).coerceIn(
+                                    0,
+                                    maxX
                                 )
-                                    .coerceIn(
-                                        0,
-                                        maxX
-                                    )
 
 
                             params.y =
                                 (
                                     startY +
                                     dy.toInt()
+                                ).coerceIn(
+                                    0,
+                                    maxY
                                 )
-                                    .coerceIn(
-                                        0,
-                                        maxY
-                                    )
 
 
                             bubbleRoot?.let {
@@ -3444,13 +2951,9 @@ class FloatingPlayerService : Service() {
 
                         MotionEvent.ACTION_UP -> {
 
-                            if (
-                                !moved
-                            ) {
-
+                            if (!moved) {
                                 restoreFromBubble()
                             }
-
 
                             return true
                         }
@@ -3483,10 +2986,8 @@ class FloatingPlayerService : Service() {
         connection.requestMethod =
             "GET"
 
-
         connection.connectTimeout =
             15000
-
 
         connection.readTimeout =
             30000
@@ -3497,10 +2998,9 @@ class FloatingPlayerService : Service() {
             "application/json"
         )
 
-
         connection.setRequestProperty(
             "User-Agent",
-            "ReelShortFloating/2.0 Android"
+            "ReelShortFloating/3.0 Android"
         )
 
 
@@ -3514,11 +3014,8 @@ class FloatingPlayerService : Service() {
                 if (
                     code in 200..299
                 ) {
-
                     connection.inputStream
-
                 } else {
-
                     connection.errorStream
                 }
 
@@ -3535,7 +3032,6 @@ class FloatingPlayerService : Service() {
             if (
                 code !in 200..299
             ) {
-
                 throw Exception(
                     "HTTP $code"
                 )
@@ -3553,35 +3049,9 @@ class FloatingPlayerService : Service() {
 
     /*
      * =========================================================
-     * HELPERS
+     * UI HELPERS
      * =========================================================
      */
-
-    private fun updateHeader() {
-
-        val episode =
-            episodes.getOrNull(
-                currentEpisodePosition
-            )
-
-
-        titleText?.text =
-            currentBookTitle
-
-
-        episodeButton?.text =
-            if (
-                episode != null
-            ) {
-
-                "EP.${episode.index} / EP.${episodes.size}"
-
-            } else {
-
-                "EP.- / EP.-"
-            }
-    }
-
 
     private fun rounded(
         color: Int,
@@ -3594,9 +3064,24 @@ class FloatingPlayerService : Service() {
                 color
             )
 
-
             cornerRadius =
                 dp(radiusDp)
+                    .toFloat()
+        }
+    }
+
+
+    private fun selectableBackground():
+        GradientDrawable {
+
+        return GradientDrawable().apply {
+
+            setColor(
+                Color.TRANSPARENT
+            )
+
+            cornerRadius =
+                dp(10)
                     .toFloat()
         }
     }
@@ -3647,9 +3132,7 @@ class FloatingPlayerService : Service() {
         playerView?.player =
             null
 
-
         player?.release()
-
 
         player =
             null
@@ -3658,36 +3141,25 @@ class FloatingPlayerService : Service() {
         try {
 
             expandedRoot?.let {
-
-                wm.removeView(
-                    it
-                )
+                wm.removeView(it)
             }
 
-        } catch (
-            _: Exception
-        ) {
+        } catch (_: Exception) {
         }
 
 
         try {
 
             bubbleRoot?.let {
-
-                wm.removeView(
-                    it
-                )
+                wm.removeView(it)
             }
 
-        } catch (
-            _: Exception
-        ) {
+        } catch (_: Exception) {
         }
 
 
         expandedRoot =
             null
-
 
         bubbleRoot =
             null
@@ -3705,80 +3177,11 @@ class FloatingPlayerService : Service() {
     override fun onBind(
         intent: Intent?
     ): IBinder? {
-
         return null
     }
 }
 EOF
 
-
-# ============================================================
-# Patch tambahan Player listener untuk loading
-# ============================================================
-
-# Tambahkan event playing / buffering ke listener utama.
-python3 - <<'PY'
-from pathlib import Path
-
-p = Path(
-    "app/src/main/java/com/shikuro/reelshort/FloatingPlayerService.kt"
-)
-
-s = p.read_text()
-
-old = '''                override fun onPlaybackStateChanged(
-                    state: Int
-                ) {
-
-                    if (
-                        state ==
-                        Player.STATE_ENDED
-                    ) {
-
-                        nextEpisode()
-                    }
-                }'''
-
-new = '''                override fun onPlaybackStateChanged(
-                    state: Int
-                ) {
-
-                    when (state) {
-
-                        Player.STATE_BUFFERING -> {
-
-                            loadingText?.apply {
-                                visibility = View.VISIBLE
-                                text = "Memuat..."
-                            }
-                        }
-
-                        Player.STATE_READY -> {
-
-                            loadingText?.visibility =
-                                View.GONE
-                        }
-
-                        Player.STATE_ENDED -> {
-
-                            nextEpisode()
-                        }
-                    }
-                }'''
-
-if old not in s:
-    raise SystemExit(
-        "Listener player tidak ditemukan"
-    )
-
-p.write_text(
-    s.replace(
-        old,
-        new,
-        1
-    )
-)
-PY
 
 
 # ============================================================
